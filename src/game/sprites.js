@@ -19,6 +19,8 @@ export const PALETTE = {
   W: '#ffffff',
   // Background jungle
   O: '#93cfa6', Q: '#7dbf96', I: '#b0dfbd', J: '#6fb98f', K: '#579f7a', L: '#4a8a6a',
+  // Background critters: birds and tree monkeys, kept as simple, muted silhouettes
+  M: '#3d2b1f',
 }
 
 // Ozo faces right. Rows 0–13 are the body; the last rows are the legs.
@@ -461,5 +463,26 @@ export const SPRITES = {
     '..KL...',
     '..JJJ..',
     '.JJJJJ.',
+  ],
+  // Tiny background birds, two flap frames. A faint far-off silhouette.
+  'bird-a': [
+    '.G.G.',
+    'G...G',
+  ],
+  'bird-b': [
+    'G...G',
+    '.GGG.',
+  ],
+  // A monkey perched in a treetop. Sits still with a slow idle bob.
+  monkey: [
+    '..MMMM..',
+    '.MMTTMM.',
+    '.MTeeTM.',
+    '.MMTTMM.',
+    'MMMMMMMM',
+    'MMMMMMMM',
+    '.MM..MM.',
+    '.M....M.',
+    '..M..M..',
   ],
 }

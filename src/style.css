@@ -70,6 +70,7 @@ svg { width: 1.4em; height: 1.4em; flex-shrink: 0; }
 .panel button { border: 3px solid var(--paper); background: transparent; padding: 0.4em 1em; }
 .panel button.primary, .panel button.selected { background: var(--accent); border-color: var(--accent); color: var(--ink); }
 .hint, .stats { color: var(--muted); font-size: 0.85em; }
+.hint button.armed { background: #ff5a5a; color: #fff; border-color: #ff5a5a; }
 
 .shop { text-align: left; }
 .shop-heading { display: flex; align-items: center; gap: 1em; }

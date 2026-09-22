@@ -139,10 +139,34 @@ export class LevelScene extends Phaser.Scene {
     for (let i = 0, x = 60; x < cover(0.5); i++, x += 230 + (i * 97) % 190) {
       this.add.image(x, L.floor + 12, 'palm').setOrigin(0.5, 1).setScale(PX).setScrollFactor(0.5).setDepth(-11).setFlipX(i % 2 === 1)
       this.add.image(x + 90 + (i * 53) % 80, L.floor + 6, 'bush').setOrigin(0.5, 1).setScale(PX).setScrollFactor(0.5).setDepth(-11)
+      // Every third palm gets a monkey, sitting still with a slow idle bob.
+      if (i % 3 === 1) {
+        const monkey = this.add.image(x, L.floor - 118, 'monkey').setOrigin(0.5, 1).setScale(PX).setScrollFactor(0.5).setDepth(-10).setFlipX(i % 2 === 1)
+        this.tweens.add({ targets: monkey, y: monkey.y - 6, duration: 1300 + (i * 211) % 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' })
+      }
     }
     // Vines hanging from the treetops above the screen.
     for (let i = 0, x = 150; x < cover(0.8); i++, x += 330 + (i * 71) % 240) {
       this.add.image(x, -8 - (i % 3) * 24, 'vine').setOrigin(0.5, 0).setScale(PX).setScrollFactor(0.8).setDepth(-9)
+    }
+    this.drawBirds()
+  }
+
+  // A handful of tiny birds drifting lazily across the sky, far in the background.
+  drawBirds() {
+    const L = this.level, count = Math.max(4, Math.round(L.width / 900))
+    for (let i = 0; i < count; i++) {
+      const x = 250 + i * (L.width / count) + (i * 137) % 220
+      const y = 70 + (i * 53) % 170
+      const flap = between(320, 420)
+      const bird = this.add.image(x, y, 'bird-a').setOrigin(0.5).setScale(PX * 1.4).setScrollFactor(0.3).setDepth(-10).setAlpha(0.65).setFlipX(i % 2 === 0)
+      this.time.addEvent({ delay: flap, loop: true, callback: () => bird.setTexture(bird.texture.key === 'bird-a' ? 'bird-b' : 'bird-a') })
+      const reach = between(140, 220)
+      this.tweens.add({
+        targets: bird, x: x + (bird.flipX ? -reach : reach), y: y + between(-15, 15),
+        duration: between(7000, 11000), yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+        onYoyo: () => bird.toggleFlipX(), onRepeat: () => bird.toggleFlipX(),
+      })
     }
   }
 
@@ -153,7 +177,7 @@ export class LevelScene extends Phaser.Scene {
       const start = ground[i][0] + ground[i][1], end = ground[i + 1][0]
       if (end <= start) continue
       this.add.rectangle(start, floor + PX, end - start, 5 * PX, 0x4a2e1c).setOrigin(0).setDepth(9)
-      this.add.rectangle(start, floor + 6 * PX, end - start, 720, 0x1a110b).setOrigin(0).setDepth(9)
+      this.add.rectangle(start, floor + 6 * PX, end - start, 720, 0x3a2718).setOrigin(0).setDepth(9)
     }
   }
 
@@ -429,20 +453,28 @@ export class LevelScene extends Phaser.Scene {
     this.glider.setVisible(false)
     loseRun() // loot from this run only counts if the level is finished
     setMode('dying')
-    this.cameras.main.stopFollow()
+    const view = this.cameras.main
+    view.stopFollow()
     sound('death')
-    const x = this.hero.x, y = this.hero.y - 49, size = PX * 1.5
-    const heart = this.add.image(x, y, 'heart').setDepth(45).setScale(0)
-    this.tweens.add({ targets: heart, scale: size, duration: 280, ease: 'Back.easeOut' })
-    this.time.delayedCall(580, () => {
-      heart.destroy()
-      for (let i = 0; i < 2; i++) {
-        const half = this.add.image(x, y, `heart-${i}`).setDepth(45).setScale(size)
-        this.tweens.add({ targets: half, x: x + (i ? 45 : -45), y: y + 55, angle: i ? 35 : -35, alpha: 0, duration: 650, ease: 'Quad.easeIn', onComplete: () => half.destroy() })
-      }
-      this.burst(x, y, 10, 0xff5a7a, 0.7)
+    // Lift Ozo up to the middle of the screen, then fade everything to black before the result card.
+    const centerX = view.scrollX + view.width / 2, centerY = view.scrollY + view.height / 2
+    this.tweens.add({ targets: this.hero, x: centerX, y: centerY, duration: 700, ease: 'Quad.easeOut' })
+    this.time.delayedCall(700, () => {
+      const x = this.hero.x, y = this.hero.y - 49, size = PX * 1.5
+      const heart = this.add.image(x, y, 'heart').setDepth(45).setScale(0)
+      this.tweens.add({ targets: heart, scale: size, duration: 280, ease: 'Back.easeOut' })
+      this.time.delayedCall(580, () => {
+        heart.destroy()
+        for (let i = 0; i < 2; i++) {
+          const half = this.add.image(x, y, `heart-${i}`).setDepth(45).setScale(size)
+          this.tweens.add({ targets: half, x: x + (i ? 45 : -45), y: y + 55, angle: i ? 35 : -35, alpha: 0, duration: 650, ease: 'Quad.easeIn', onComplete: () => half.destroy() })
+        }
+        this.burst(x, y, 10, 0xff5a7a, 0.7)
+      })
     })
-    this.time.delayedCall(1450, () => { emit('death-reason', reason); setMode('dead') })
+    const fade = this.add.rectangle(view.width / 2, view.height / 2, view.width, view.height, 0x000000, 0).setScrollFactor(0).setDepth(100)
+    this.tweens.add({ targets: fade, alpha: 1, duration: 400, delay: 1450, ease: 'Quad.easeIn' })
+    this.time.delayedCall(1850, () => { emit('death-reason', reason); setMode('dead') })
   }
 
   win() {

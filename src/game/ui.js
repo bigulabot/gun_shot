@@ -142,7 +142,7 @@ export function setupUI(getScene) {
         return `<li class="${owned ? 'owned' : ''}"><span><b>${item.name}</b> ${item.description}</span><button data-buy="${item.id}" ${owned || !enough ? 'disabled' : ''} aria-label="${owned ? 'Already own' : 'Buy'} ${item.name}${owned ? '' : ` for ${item.cost} ${item.currency === 'coins' ? 'gun coins' : 'research'}`}">${owned ? 'OWNED' : `${currency(item.currency)} ${item.cost}`}</button></li>`
       }).join('')}</ul>
       <p>Gun: <button data-equip="pop" class="${state.profile.equipped === 'pop' ? 'selected' : ''}" aria-pressed="${state.profile.equipped === 'pop'}">Pop Blaster</button>${state.profile.upgrades.twin ? ` <button data-equip="twin" class="${state.profile.equipped === 'twin' ? 'selected' : ''}" aria-pressed="${state.profile.equipped === 'twin'}">Twin Pop</button>` : ''}</p>
-      <p class="hint">Testing: <button data-action="reset-save">${resetArmed > Date.now() ? 'TAP AGAIN TO RESET' : 'RESET SAVE'}</button> clears loot, upgrades and best time.</p>
+      <p class="hint">Testing: <button data-action="reset-save" class="${resetArmed > Date.now() ? 'armed' : ''}">${resetArmed > Date.now() ? 'TAP AGAIN TO RESET' : 'RESET SAVE'}</button> clears loot, upgrades and best time.</p>
     </div>`
   }
   function renderMode() {
@@ -171,7 +171,7 @@ export function setupUI(getScene) {
     if (action === 'reset-save') {
       // Two taps, so it can't happen by accident.
       if (resetArmed > Date.now()) { resetArmed = 0; resetProfile(); showToast('Save reset to a fresh start.') }
-      else { resetArmed = Date.now() + 3000; setTimeout(() => { if (state.mode === 'shop') renderShop() }, 3100) }
+      else { resetArmed = Date.now() + 5000; setTimeout(() => { if (state.mode === 'shop') renderShop() }, 5100) }
       renderShop()
     }
   })
