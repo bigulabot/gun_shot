@@ -1,39 +1,46 @@
-// Renders Finlay's enemy sprites from sprites.js as PNG previews in
-// art/finlay-enemies/, plus a line-up next to Ozo and the current enemies at
-// the size they'd be in the game. Run with: node scripts/render-sprites.mjs
+// Renders Finlay's sprites from sprites.js as PNG previews: each one big on
+// its own, plus a line-up next to Ozo at the size they'd be in the game.
+//   art/finlay-enemies/  hatter, spiky (with the Snapper and Spitter)
+//   art/finlay-bosses/   prince-nova, ring-star, rap-bandit
+// Run with: node scripts/render-sprites.mjs
 import { writeFileSync, mkdirSync } from 'node:fs'
 import { SPRITES, PX } from '../src/game/sprites.js'
 import { canvas, fillRect, bounds, drawRows, encodePNG } from './pixel-png.mjs'
 
-const OUT = 'art/finlay-enemies'
 const SKY = '#9ad8f0', GRASS = '#78d04e', DIRT = '#c27a4a'
-mkdirSync(OUT, { recursive: true })
+const sets = [
+  { dir: 'art/finlay-enemies', sprites: ['hatter', 'spiky'], lineup: ['ozo-idle', 'snapper', 'spitter', 'hatter', 'spiky'] },
+  { dir: 'art/finlay-bosses', sprites: ['prince-nova', 'ring-star', 'rap-bandit'], lineup: ['ozo-idle', 'prince-nova', 'ring-star', 'rap-bandit'] },
+]
 
-// Each sprite on its own, big, with a see-through background.
-const BIG = 16
-for (const key of ['hatter', 'spiky']) {
-  const rows = SPRITES[key], box = bounds(rows), pad = 2
-  const image = canvas((box.width + pad * 2) * BIG, (box.height + pad * 2) * BIG)
-  drawRows(image, rows, (pad - box.minX) * BIG, (pad - box.minY) * BIG, BIG)
-  writeFileSync(`${OUT}/${key}.png`, encodePNG(image))
-  console.log(`wrote ${OUT}/${key}.png`)
+for (const { dir, sprites, lineup } of sets) {
+  mkdirSync(dir, { recursive: true })
+
+  // Each sprite on its own, big, with a see-through background.
+  const BIG = 16
+  for (const key of sprites) {
+    const rows = SPRITES[key], box = bounds(rows), pad = 2
+    const image = canvas((box.width + pad * 2) * BIG, (box.height + pad * 2) * BIG)
+    drawRows(image, rows, (pad - box.minX) * BIG, (pad - box.minY) * BIG, BIG)
+    writeFileSync(`${dir}/${key}.png`, encodePNG(image))
+    console.log(`wrote ${dir}/${key}.png`)
+  }
+
+  // Line-up on a strip of level: everyone standing on the same ground, at
+  // twice their in-game size (game art pixels are PX = 4 screen pixels).
+  const scale = PX * 2, gap = 6 * scale, boxes = lineup.map(key => bounds(SPRITES[key]))
+  const width = boxes.reduce((sum, box) => sum + box.width * scale + gap, gap)
+  const tallest = Math.max(...boxes.map(box => box.height)) * scale
+  const floor = tallest + 4 * scale, height = floor + 10 * scale
+  const sheet = canvas(width, height, SKY)
+  fillRect(sheet, 0, floor, width, floor + 3 * scale, GRASS)
+  fillRect(sheet, 0, floor + 3 * scale, width, height, DIRT)
+  let x = gap
+  lineup.forEach((key, i) => {
+    const box = boxes[i]
+    drawRows(sheet, SPRITES[key], x - box.minX * scale, floor - (box.maxY + 1) * scale, scale)
+    x += box.width * scale + gap
+  })
+  writeFileSync(`${dir}/lineup.png`, encodePNG(sheet))
+  console.log(`wrote ${dir}/lineup.png (${lineup.join(', ')})`)
 }
-
-// Line-up on a strip of level: everyone standing on the same ground, at
-// twice their in-game size (game art pixels are PX = 4 screen pixels).
-const scale = PX * 2, gap = 6 * scale, lineup = ['ozo-idle', 'snapper', 'spitter', 'hatter', 'spiky']
-const boxes = lineup.map(key => bounds(SPRITES[key]))
-const width = boxes.reduce((sum, box) => sum + box.width * scale + gap, gap)
-const tallest = Math.max(...boxes.map(box => box.height)) * scale
-const floor = tallest + 4 * scale, height = floor + 10 * scale
-const sheet = canvas(width, height, SKY)
-fillRect(sheet, 0, floor, width, floor + 3 * scale, GRASS)
-fillRect(sheet, 0, floor + 3 * scale, width, height, DIRT)
-let x = gap
-lineup.forEach((key, i) => {
-  const box = boxes[i]
-  drawRows(sheet, SPRITES[key], x - box.minX * scale, floor - (box.maxY + 1) * scale, scale)
-  x += box.width * scale + gap
-})
-writeFileSync(`${OUT}/lineup.png`, encodePNG(sheet))
-console.log(`wrote ${OUT}/lineup.png (${lineup.join(', ')})`)

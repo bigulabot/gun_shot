@@ -143,13 +143,15 @@ export class LevelScene extends Phaser.Scene {
       this.add.image(x + 90 + (i * 53) % 80, L.floor + 6, 'bush').setOrigin(0.5, 1).setScale(PX).setScrollFactor(0.5).setDepth(-11)
       // Every third palm has a monkey hanging by one hand under a frond,
       // swinging gently from that hand. Flipped palms get a flipped monkey
-      // on the other frond, so it always dangles outwards.
+      // on the other frond, so it always dangles outwards. Drawn as a soft
+      // dark-green silhouette so it stays in the background.
       if (i % 3 === 1) {
         const flip = i % 2 === 1, palmW = SPRITES.palm[0].length, palmH = SPRITES.palm.length
         const frondX = (MONKEY_GRIP.x - palmW / 2) * PX * (flip ? -1 : 1)
         const handX = MONKEY_HAND / SPRITES.monkey[0].length
         const monkey = this.add.image(x + frondX, L.floor + 12 - (palmH - MONKEY_GRIP.y) * PX, 'monkey')
           .setOrigin(flip ? 1 - handX : handX, 0).setScale(PX).setScrollFactor(0.5).setDepth(-10).setFlipX(flip)
+          .setTint(0x3f7560).setTintMode(Phaser.TintModes.FILL).setAlpha(0.8)
         monkey.setAngle(-5)
         this.tweens.add({ targets: monkey, angle: 5, duration: 1700 + (i * 211) % 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' })
       }
