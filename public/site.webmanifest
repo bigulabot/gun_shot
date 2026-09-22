@@ -1,0 +1,15 @@
+{
+  "name": "Gun Shot",
+  "short_name": "Gun Shot",
+  "description": "Ozo the toucan's run-and-gun platformer.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#10202c",
+  "theme_color": "#10202c",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
