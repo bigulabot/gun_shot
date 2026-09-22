@@ -3,13 +3,41 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#a7e9f4" />
-    <title>Finlay's Game</title>
+    <meta name="theme-color" content="#10202c" />
+    <meta name="description" content="Ozo the toucan's run-and-gun platformer. Prototype." />
+    <title>Gun Shot</title>
   </head>
   <body>
-    <main>
-      <div id="game" aria-label="Finlay's Game"></div>
+    <main id="stage" data-mode="loading" aria-label="Gun Shot game">
+      <div id="game"></div>
+      <header id="hud" class="hud" hidden>
+        <div class="hud-group">
+          <span id="hearts" class="hearts" aria-label="3 hearts"></span>
+          <span class="level-label"><b id="level-name"></b> <span id="objective"></span></span>
+        </div>
+        <div class="hud-group">
+          <span class="wallet research" title="Research">◆ <b id="research-count">0</b></span>
+          <span class="wallet coins" title="Gun coins">● <b id="coin-count">0</b></span>
+          <button id="pause" class="icon-button" aria-label="Pause game"></button>
+        </div>
+      </header>
+      <div id="level-progress" class="level-progress" hidden><div id="progress-fill"></div></div>
+      <div id="controls" class="controls" hidden>
+        <div id="stick" class="stick" aria-label="Move: drag left or right"><div class="stick-knob"></div></div>
+        <div class="control-group">
+          <button data-control="dash" class="control" aria-label="Dash" hidden></button>
+          <button data-control="jump" class="control" aria-label="Jump"></button>
+          <button data-control="shoot" class="control big" aria-label="Shoot"></button>
+        </div>
+      </div>
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+      <div id="overlay" class="overlay"><p>Loading…</p></div>
+      <div class="utility">
+        <button id="sound" class="icon-button" aria-label="Mute sound"></button>
+        <button id="fullscreen" class="icon-button" aria-label="Enter fullscreen"></button>
+      </div>
     </main>
+    <noscript><p>Please enable JavaScript to play Gun Shot.</p></noscript>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

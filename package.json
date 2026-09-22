@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test": "node --test",
     "dev": "vite --configLoader native",
     "build": "vite build --configLoader native",
     "preview": "vite preview --configLoader native"

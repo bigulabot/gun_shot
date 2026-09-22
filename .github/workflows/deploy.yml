@@ -32,6 +32,8 @@ jobs:
         run: npm ci
       - name: Build game
         run: npm run build
+      - name: Check saved progress and purchases
+        run: npm test
       - name: Configure Pages
         uses: actions/configure-pages@v6
       - name: Upload site

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#142f39" />
+    <meta name="description" content="Meet Ozo, a little toucan on a big adventure. A colourful, touch-friendly run-and-gun platformer." />
+    <title>Gun Shot — Ozo's Adventure</title>
+  </head>
+  <body>
+    <main class="app-shell">
+      <div class="outside-heading"><span class="wordmark">GUN SHOT<span class="brand-dot"></span></span><span>OZO'S FIRST ADVENTURE</span><span class="prototype-label">PLAYABLE PROTOTYPE <i>01</i></span></div>
+      <section id="stage" data-mode="loading" aria-label="Gun Shot game">
+        <div id="game" role="img" aria-label="Side-scrolling jungle adventure. Use the on-screen controls or arrow keys, Space to jump and X to shoot."></div>
+        <header id="hud" class="hud" hidden>
+          <div class="hud-left"><div class="health" id="hearts" aria-label="3 hearts"></div><div class="level-label"><span>01 / CANOPY COAST</span><small id="objective">Find the crumbling wall</small></div></div>
+          <div class="hud-right"><div class="wallet" title="Research"><span class="crystal-symbol">◆</span><span id="research-count">0</span></div><div class="wallet" title="Gun coins"><span class="coin-symbol">ϟ</span><span id="coin-count">0</span></div><button id="pause" class="icon-button" aria-label="Pause game"></button></div>
+        </header>
+        <div id="level-progress" class="level-progress" hidden><div id="progress-fill"></div></div>
+        <div id="controls" class="controls" hidden>
+          <div class="move-controls"><button data-control="left" class="control move" aria-label="Move left"></button><button data-control="right" class="control move" aria-label="Move right"></button></div>
+          <div class="action-controls"><button data-control="dash" class="control dash" aria-label="Dash" hidden></button><button data-control="jump" class="control jump" aria-label="Jump"></button><button data-control="shoot" class="control shoot" aria-label="Shoot"></button></div>
+        </div>
+        <div id="toast" class="toast" role="status" aria-live="polite"></div>
+        <div id="overlay" class="overlay"><div class="loading-message">A little adventure is loading…</div></div>
+        <div class="utility"><button id="sound" class="icon-button" aria-label="Mute sound"></button><button id="fullscreen" class="icon-button" aria-label="Enter fullscreen"></button></div>
+      </section>
+      <footer class="outside-footer"><span><span class="status-dot"></span> ONE BIRD. ONE BIG ADVENTURE.</span><span class="keyboard-hint"><kbd>←</kbd><kbd>→</kbd> move <kbd>SPACE</kbd> jump <kbd>X</kbd> shoot <kbd>ESC</kbd> pause</span><span class="touch-hint">Best played with your phone turned sideways.</span></footer>
+    </main>
+    <noscript><p>Please enable JavaScript to play Gun Shot.</p></noscript>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
