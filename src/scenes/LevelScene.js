@@ -214,9 +214,16 @@ export class LevelScene extends Phaser.Scene {
     const g = this.add.graphics().setDepth(5)
     // A box with its corners stepped off, so it looks drawn in pixels.
     const puff = (bx, by, bw, bh, color) => g.fillStyle(color).fillRect(bx + PX, by, bw - 2 * PX, bh).fillRect(bx, by + PX, bw, bh - 2 * PX)
-    puff(left + PX, top + 2 * PX, w, h, 0xc9e3ee) // shadow
+    // Every cloud is puffy on top; most also bulge underneath, with none, one
+    // or two puffs (picked from its position, so it's the same each time).
+    // Each puff below is [left, width] as shares of the cloud, and how many
+    // art pixels it hangs down.
+    const below = [[], [[0.22, 0.34, 4]], [[0.12, 0.3, 4], [0.56, 0.28, 3]]][Math.floor(x / 10) % 3]
+      .map(([fx, fw, drop]) => [left + snap(w * fx), top + h - 4 * PX, snap(w * fw), (4 + drop) * PX])
+    for (const [bx, by, bw, bh] of [[left, top, w, h], ...below]) puff(bx + PX, by + 2 * PX, bw, bh, 0xc9e3ee) // shadows
     puff(left + snap(w * 0.1), top - 4 * PX, snap(w * 0.32), 8 * PX, 0xffffff)
     puff(left + snap(w * 0.48), top - 7 * PX, snap(w * 0.3), 10 * PX, 0xffffff)
+    for (const [bx, by, bw, bh] of below) puff(bx, by, bw, bh, 0xffffff)
     puff(left, top, w, h, 0xffffff)
   }
 
