@@ -12,7 +12,8 @@ const paths = {
   fullscreen: '<path d="M8 3H3v5m13-5h5v5M3 16v5h5m8 0h5v-5"/>',
 }
 const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.right}</svg>`
-const STICK_DEADZONE = 0.3 // how far (0–1) the stick must be pushed before Ozo moves
+const STICK_DEADZONE = 0.25 // how far (0–1) the stick must be pushed before Ozo moves
+const BUTTON_REACH = 1.9 // a touch counts for a button within this many button-radii of its centre
 const timeLabel = seconds => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
 
 export function setupUI(getScene) {
@@ -31,26 +32,66 @@ export function setupUI(getScene) {
   for (const button of buttons) {
     const action = button.dataset.control, label = { jump: 'JUMP', shoot: 'FIRE', dash: 'DASH' }[action]
     button.innerHTML = `${icon(action)}${label ? `<span>${label}</span>` : ''}`
-    button.addEventListener('pointerdown', event => {
-      if (state.mode !== 'playing') return
-      event.preventDefault(); unlockAudio(); button.setPointerCapture(event.pointerId); pointers.set(event.pointerId, action)
-      if (action === 'jump') state.input.jumpQueued = true
-      if (action === 'dash') state.input.dashQueued = true
-      if (action === 'shoot') state.input.shootQueued = true
-      syncInput()
-    })
-    const release = event => { pointers.delete(event.pointerId); syncInput() }
-    for (const name of ['pointerup', 'pointercancel', 'lostpointercapture']) button.addEventListener(name, release)
-    button.addEventListener('contextmenu', event => event.preventDefault())
   }
-  // Thumbstick: drag the knob; only left/right matters for now.
+  // Touches on the game controls are ours alone: no double-tap zoom, magnifier,
+  // text selection or callout menu. (Pointer events still arrive as normal.)
+  const moveZone = document.querySelector('#move-zone'), actionZone = document.querySelector('#action-zone')
+  for (const zone of [moveZone, actionZone]) {
+    for (const name of ['touchstart', 'touchend']) zone.addEventListener(name, event => event.preventDefault(), { passive: false })
+    zone.addEventListener('contextmenu', event => event.preventDefault())
+  }
+  const press = (pointerId, action) => {
+    if (pointers.get(pointerId) === action) return
+    pointers.set(pointerId, action)
+    if (action === 'jump') state.input.jumpQueued = true
+    if (action === 'dash') state.input.dashQueued = true
+    if (action === 'shoot') state.input.shootQueued = true
+    syncInput()
+  }
+  const release = event => { if (pointers.delete(event.pointerId)) syncInput() }
+
+  // Action buttons: a finger presses the nearest visible button it is close to,
+  // and can slide from one to another (FIRE to JUMP without lifting). Drifting
+  // into empty space keeps the last button held, so a shot or jump never cuts out.
+  function nearestButton(x, y) {
+    let best = null, bestDistance = Infinity
+    for (const button of buttons) {
+      if (button.hidden) continue
+      const box = button.getBoundingClientRect(), radius = box.width / 2
+      const distance = Math.hypot(x - (box.left + radius), y - (box.top + radius)) / radius
+      if (distance < BUTTON_REACH && distance < bestDistance) { best = button.dataset.control; bestDistance = distance }
+    }
+    return best
+  }
+  actionZone.addEventListener('pointerdown', event => {
+    if (state.mode !== 'playing') return
+    event.preventDefault(); unlockAudio(); actionZone.setPointerCapture(event.pointerId)
+    pointers.set(event.pointerId, null) // tracked, even if it starts away from every button
+    const action = nearestButton(event.clientX, event.clientY)
+    if (action) press(event.pointerId, action)
+  })
+  actionZone.addEventListener('pointermove', event => {
+    if (!pointers.has(event.pointerId)) return
+    const action = nearestButton(event.clientX, event.clientY)
+    if (action) press(event.pointerId, action)
+  })
+  for (const name of ['pointerup', 'pointercancel', 'lostpointercapture']) actionZone.addEventListener(name, release)
+
+  // Floating thumbstick: it appears wherever the thumb lands on the left half,
+  // and the base slides along behind the thumb if it is dragged past the edge,
+  // so turning round never needs a long drag back across a fixed circle.
   const stick = document.querySelector('#stick'), knob = stick.querySelector('.stick-knob')
-  let stickPointer = null
+  let stickPointer = null, origin = null, rest = null
   function moveStick(event) {
-    const box = stick.getBoundingClientRect(), radius = box.width / 2, reach = radius * 0.55
-    let dx = event.clientX - (box.left + radius), dy = event.clientY - (box.top + radius)
+    const reach = stick.offsetWidth / 2 * 0.55
+    let dx = event.clientX - origin.x, dy = event.clientY - origin.y
     const distance = Math.hypot(dx, dy)
-    if (distance > reach) { dx *= reach / distance; dy *= reach / distance }
+    if (distance > reach) {
+      // Drag the base along so the knob stays at the rim under the thumb.
+      origin.x += dx * (1 - reach / distance); origin.y += dy * (1 - reach / distance)
+      dx = event.clientX - origin.x; dy = event.clientY - origin.y
+    }
+    stick.style.transform = `translate(${origin.x - rest.x}px, ${origin.y - rest.y}px)`
     knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`
     const push = dx / reach
     if (push < -STICK_DEADZONE) pointers.set(event.pointerId, 'left')
@@ -61,17 +102,20 @@ export function setupUI(getScene) {
   function resetStick() {
     if (stickPointer !== null) pointers.delete(stickPointer)
     stickPointer = null
-    knob.style.transform = ''
+    stick.style.transform = knob.style.transform = ''
     stick.classList.remove('active')
   }
-  stick.addEventListener('pointerdown', event => {
-    if (state.mode !== 'playing') return
-    event.preventDefault(); unlockAudio(); stick.setPointerCapture(event.pointerId)
+  moveZone.addEventListener('pointerdown', event => {
+    if (state.mode !== 'playing' || stickPointer !== null) return
+    event.preventDefault(); unlockAudio(); moveZone.setPointerCapture(event.pointerId)
+    // Where the stick rests, from layout (offsets ignore the transform it may still be easing back from).
+    const zone = moveZone.getBoundingClientRect(), half = stick.offsetWidth / 2
+    rest = { x: zone.left + stick.offsetLeft + half, y: zone.top + stick.offsetTop + half }
+    origin = { x: event.clientX, y: event.clientY }
     stickPointer = event.pointerId; stick.classList.add('active'); moveStick(event)
   })
-  stick.addEventListener('pointermove', event => { if (event.pointerId === stickPointer) moveStick(event) })
-  for (const name of ['pointerup', 'pointercancel', 'lostpointercapture']) stick.addEventListener(name, event => { if (event.pointerId === stickPointer) { resetStick(); syncInput() } })
-  stick.addEventListener('contextmenu', event => event.preventDefault())
+  moveZone.addEventListener('pointermove', event => { if (event.pointerId === stickPointer) moveStick(event) })
+  for (const name of ['pointerup', 'pointercancel', 'lostpointercapture']) moveZone.addEventListener(name, event => { if (event.pointerId === stickPointer) { resetStick(); syncInput() } })
 
   window.addEventListener('keydown', event => {
     if (event.code === 'Escape' && !event.repeat) {
@@ -94,6 +138,11 @@ export function setupUI(getScene) {
   const pauseWhenAway = () => { resetInput(); if (state.mode === 'playing') getScene().pauseRun() }
   window.addEventListener('blur', pauseWhenAway)
   document.addEventListener('visibilitychange', () => { if (document.hidden) pauseWhenAway() })
+  // Turning a phone or tablet upright covers the game with a "turn sideways" hint, so pause.
+  const upright = window.matchMedia('(orientation: portrait) and (pointer: coarse)')
+  upright.addEventListener('change', () => { if (upright.matches) pauseWhenAway() })
+  // iPad/iPhone Safari: no pinch zoom (gesture*) and no double-tap zoom anywhere on the page.
+  for (const name of ['gesturestart', 'gesturechange', 'gestureend', 'dblclick']) document.addEventListener(name, event => event.preventDefault(), { passive: false })
   const pause = document.querySelector('#pause'); pause.innerHTML = icon('pause'); pause.addEventListener('click', () => getScene().pauseRun())
   const soundButton = document.querySelector('#sound')
   function updateSound() {
