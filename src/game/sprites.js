@@ -19,8 +19,8 @@ export const PALETTE = {
   W: '#ffffff',
   // Background jungle
   O: '#93cfa6', Q: '#7dbf96', I: '#b0dfbd', J: '#6fb98f', K: '#579f7a', L: '#4a8a6a',
-  // Background critters: birds and tree monkeys, kept as simple, muted silhouettes
-  M: '#3d2b1f',
+  // Background critters: birds and tree monkeys
+  M: '#9a6035',
 }
 
 // Ozo faces right. Rows 0–13 are the body; the last rows are the legs.
@@ -473,16 +473,78 @@ export const SPRITES = {
     'G...G',
     '.GGG.',
   ],
-  // A monkey perched in a treetop. Sits still with a slow idle bob.
+  // A monkey hanging by one arm from a palm frond (the hand is the top-right
+  // pixels), with ears, a pale face and a curly tail. It swings gently.
   monkey: [
-    '..MMMM..',
-    '.MMTTMM.',
-    '.MTeeTM.',
-    '.MMTTMM.',
-    'MMMMMMMM',
-    'MMMMMMMM',
-    '.MM..MM.',
-    '.M....M.',
-    '..M..M..',
+    '.........DD.',
+    '.........MD.',
+    '.........MD.',
+    '...MMMM..MD.',
+    '..MMMMMM.MD.',
+    '.TMTTTTMTMD.',
+    '.MTkTTkTMMD.',
+    '..MTTTTM.MD.',
+    '...MTTM..MD.',
+    '...MMMMMMMD.',
+    '..MMTTTTMM..',
+    '.MMMTTTTMM..',
+    'M.MMTTTTMM..',
+    'M..MMMMMM...',
+    'M..MM..MM...',
+    '.M.M....M...',
+    '.MDD...DD...',
+  ],
+
+  // Finlay's enemy drawings, not in any level yet. Same 4 px art pixels as
+  // the Snapper and Spitter. Previews: art/finlay-enemies/.
+  // An egg on little boots, in a floppy swirly hat, with a round "O" mouth.
+  hatter: [
+    '...rrrr.......',
+    '..rryrrrr.....',
+    '.rryyrrrrr....',
+    '.rrrrrryrrr...',
+    '.rryrrrrrrrr..',
+    '.rrrrrrryrrrr.',
+    '.RRRRRRRRRRRRr',
+    '..ETTTTTTTTE..',
+    '.ETTTTTTTTTTE.',
+    '.ETeeeTTeeeTE.',
+    '.ETekeTTekeTE.',
+    '.ETeeeTTeeeTE.',
+    '.ETTTTTTTTTTE.',
+    '.ETTTkkTTTTTE.',
+    '.ETTkRRkTTTTE.',
+    '.ETTTkkTTTTTE.',
+    '.ETTTTTTTTTTE.',
+    '..ETTTTTTTTE..',
+    '...EETTTTEE...',
+    '.....EEEE.....',
+    '.....F..F.....',
+    '...FFF..FFF...',
+  ],
+  // A round spiky ball: a crown of big spikes, little spikes round the sides,
+  // big eyes, a flat mouth and skinny legs.
+  spiky: [
+    '..........D.....',
+    '.........DX.....',
+    '......D..DXX....',
+    '......DX.DXX....',
+    '...D..DX.DXX..D.',
+    '...DX.DXXDXXX.DX',
+    '...DX.DXXDXXXDX.',
+    '...DXDXXXDXXXX..',
+    '...CllllllllC...',
+    '..CllllllllllC..',
+    'DXCleeelleeelCXD',
+    '..ClekellekelC..',
+    '..CleeelleeelC..',
+    'DXCllllllllllCXD',
+    '..ClllkkkklllC..',
+    '...CllllllllC...',
+    'DX..CCllllCC..XD',
+    '.....CCCCCC.....',
+    '......F..F......',
+    '......F..F......',
+    '.....FF..FFF....',
   ],
 }

@@ -10,6 +10,8 @@ import canopy from '../levels/canopy.js'
 const STONE_WIDTH = 50, STONE_HEIGHT = 44 // wall stones, world pixels
 const GROUND_DEPTH = 210 // ground reaches below the bottom of the screen
 const MUZZLE_X = 42, MUZZLE_Y = 28 // where shots leave the blaster, from Ozo's feet
+const MONKEY_GRIP = { x: 5.5, y: 14 } // art pixel under the left palm frond where a monkey holds on
+const MONKEY_HAND = 10 // the monkey's hand, in art pixels from the left of its sprite
 const FONT = { fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontStyle: 'bold' }
 const clamp = Phaser.Math.Clamp, between = Phaser.Math.Between
 const TOUCH = window.matchMedia?.('(pointer: coarse)').matches // phone or tablet: show touch tips
@@ -139,10 +141,17 @@ export class LevelScene extends Phaser.Scene {
     for (let i = 0, x = 60; x < cover(0.5); i++, x += 230 + (i * 97) % 190) {
       this.add.image(x, L.floor + 12, 'palm').setOrigin(0.5, 1).setScale(PX).setScrollFactor(0.5).setDepth(-11).setFlipX(i % 2 === 1)
       this.add.image(x + 90 + (i * 53) % 80, L.floor + 6, 'bush').setOrigin(0.5, 1).setScale(PX).setScrollFactor(0.5).setDepth(-11)
-      // Every third palm gets a monkey, sitting still with a slow idle bob.
+      // Every third palm has a monkey hanging by one hand under a frond,
+      // swinging gently from that hand. Flipped palms get a flipped monkey
+      // on the other frond, so it always dangles outwards.
       if (i % 3 === 1) {
-        const monkey = this.add.image(x, L.floor - 118, 'monkey').setOrigin(0.5, 1).setScale(PX).setScrollFactor(0.5).setDepth(-10).setFlipX(i % 2 === 1)
-        this.tweens.add({ targets: monkey, y: monkey.y - 6, duration: 1300 + (i * 211) % 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' })
+        const flip = i % 2 === 1, palmW = SPRITES.palm[0].length, palmH = SPRITES.palm.length
+        const frondX = (MONKEY_GRIP.x - palmW / 2) * PX * (flip ? -1 : 1)
+        const handX = MONKEY_HAND / SPRITES.monkey[0].length
+        const monkey = this.add.image(x + frondX, L.floor + 12 - (palmH - MONKEY_GRIP.y) * PX, 'monkey')
+          .setOrigin(flip ? 1 - handX : handX, 0).setScale(PX).setScrollFactor(0.5).setDepth(-10).setFlipX(flip)
+        monkey.setAngle(-5)
+        this.tweens.add({ targets: monkey, angle: 5, duration: 1700 + (i * 211) % 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' })
       }
     }
     // Vines hanging from the treetops above the screen.
