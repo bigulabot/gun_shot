@@ -27,11 +27,28 @@ export function setupVerification(game) {
   }
   requestAnimationFrame(report)
   let running = false
+  // ?verify=1&fast=1 drives the game by hand, frame after frame as fast as the
+  // computer allows, instead of waiting for the browser to draw each one. The
+  // checks then finish in seconds and work even in a hidden tab. Timeouts count
+  // game time, so they mean the same in both modes.
+  const fast = new URLSearchParams(location.search).has('fast')
+  let clock = 0, framesSinceBreath = 0
+  const now = () => fast ? clock : performance.now()
+  // A message-channel hop lets the page handle clicks between batches of
+  // frames; unlike a timer it isn't slowed down in a hidden tab.
+  const breathe = () => new Promise(resolve => { const { port1, port2 } = new MessageChannel(); port1.onmessage = resolve; port2.postMessage(0) })
+  function nextFrame() {
+    if (!fast) return new Promise(requestAnimationFrame)
+    game.loop.step(clock += 1000 / 60)
+    if (++framesSinceBreath < 30) return Promise.resolve()
+    framesSinceBreath = 0
+    return breathe()
+  }
   async function until(check, timeout = 4000, tick = () => {}) {
-    const start = performance.now()
+    const start = now()
     while (!check()) {
-      if (performance.now() - start > timeout) throw new Error(`Timed out: ${state.mode}, x=${Math.round(scene().hero?.x || 0)}, y=${Math.round(scene().hero?.y || 0)}`)
-      tick(); await new Promise(requestAnimationFrame)
+      if (now() - start > timeout) throw new Error(`Timed out: ${state.mode}, x=${Math.round(scene().hero?.x || 0)}, y=${Math.round(scene().hero?.y || 0)}`)
+      tick(); await nextFrame()
     }
   }
   async function fresh() {
@@ -43,6 +60,13 @@ export function setupVerification(game) {
   async function check(name, fn) {
     if (running) return
     running = true; output.textContent = `RUNNING: ${name}`
+    if (fast && game.loop.running) {
+      game.loop.sleep(); clock = game.loop.lastTime
+      // Phaser's tweens measure time with Date.now(), so make it follow the
+      // game clock too, or animations would lag behind the fast frames.
+      const realStart = Date.now(), clockStart = clock
+      Date.now = () => realStart + (clock - clockStart)
+    }
     try { await fn(); output.textContent = `PASS: ${name}` }
     catch (error) { output.textContent = `FAIL: ${name}. ${error.message}` }
     finally { running = false; resetInput() }
