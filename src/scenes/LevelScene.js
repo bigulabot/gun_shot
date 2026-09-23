@@ -65,7 +65,7 @@ export class LevelScene extends Phaser.Scene {
     this.drawPits()
     for (const [x, y, width, height = 25] of L.ledges) this.addPlatform(x, y, width, height, true)
     this.tipLabels = L.tips.map(([x, y, text, touchText]) => this.tip(x, y, TOUCH && touchText ? touchText : text))
-    this.createWall(Boolean(saved))
+    this.createWall(Boolean(saved?.wallBroken)) // as it was when Ozo touched the flag
     this.createCheckpoint(Boolean(saved))
     this.createExit()
 
@@ -116,7 +116,7 @@ export class LevelScene extends Phaser.Scene {
     emit('ready', portraitURL())
     emit('health', state.health)
     emit('progress', saved ? (L.checkpoint - L.start) / (L.exit - L.start) : 0)
-    emit('objective', saved ? 'Path clear. Head home!' : 'Find the crumbling wall')
+    emit('objective', saved?.wallBroken ? 'Path clear. Head home!' : 'Find the crumbling wall')
   }
 
   startRun() { this.scene.restart({ autostart: true, level: this.level }) }
@@ -260,7 +260,7 @@ export class LevelScene extends Phaser.Scene {
 
   reachCheckpoint() {
     this.checkpointReached = true
-    state.checkpoint = { playTime: this.playTime, coins: state.run.coins, research: state.run.research, defeated: state.run.defeated }
+    state.checkpoint = { playTime: this.playTime, coins: state.run.coins, research: state.run.research, defeated: state.run.defeated, wallBroken: this.wallBroken }
     this.flag.setTexture('flag-up')
     this.burst(this.flag.x + 16, this.flag.y - 80, 10, 0xef4f6a)
     sound('heal')

@@ -1,7 +1,7 @@
 import Phaser from 'phaser'
 import { state, cleanProfile, emit, resetInput, purchase, collect } from './state.js'
 import { shotRange, WALL_HEALTH } from './combat.js'
-import { PLAYER, BLASTER, WALL } from './tuning.js'
+import { PLAYER, BLASTER, WALL, ENEMIES } from './tuning.js'
 
 // Uses the real scene, physics and input state. No teleports or invincibility on
 // the baseline route. Run manually at /?verify=1; never touches the saved profile.
@@ -222,7 +222,7 @@ export function setupVerification(game) {
     if (tap > held - 25 || tap < 70) throw new Error(`Short hop wrong: tap rose ${Math.round(tap)} px, held rose ${Math.round(held)} px`)
     resetInput(); s.pauseRun()
   })
-  panel.querySelector('#verify-checkpoint').onclick = () => check('checkpoint: start past the wall, earlier loot kept, full restart forgets it', async () => {
+  panel.querySelector('#verify-checkpoint').onclick = () => check('checkpoint: start at the flag before the wall, earlier loot kept, full restart forgets it', async () => {
     await fresh()
     const s = scene(), L = s.level
     quiet(s)
@@ -236,8 +236,12 @@ export function setupVerification(game) {
     if (!document.querySelector('[data-action="checkpoint"]')) throw new Error('Death card does not offer the checkpoint')
     s.restartFromCheckpoint()
     await until(() => state.mode === 'playing' && s.hero.x > L.checkpoint - 5 && state.health === PLAYER.hearts)
-    if (!s.wallBroken || s.wallCollider.body.enable) throw new Error('Wall is not already down after the checkpoint')
+    // The wall was still standing when Ozo touched the flag, so it stands again.
+    if (s.wallBroken || !s.wallCollider.body.enable) throw new Error('Wall was not standing at the flag, but is down after it')
     if (s.enemies.getChildren().some(e => e.x < L.checkpoint)) throw new Error('Enemies behind the checkpoint came back')
+    // Nothing may be able to reach the flag without the wall in between.
+    const unshielded = s.enemies.getChildren().filter(e => e.x < L.wall.x && Math.abs(e.x - L.checkpoint) < ENEMIES.spitter.fireRange)
+    if (unshielded.length) throw new Error(`An enemy at x=${Math.round(unshielded[0].x)} can reach the flag`)
     if (state.run.coins !== 2) throw new Error(`Expected the 2 coins from before the flag, got ${state.run.coins}`)
     s.startRun()
     await until(() => state.mode === 'playing' && s.hero.x < L.start + 20)

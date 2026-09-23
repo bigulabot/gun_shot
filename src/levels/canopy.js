@@ -50,9 +50,11 @@ export default {
   // Breakable wall standing on the ground. Its stones are 50 × 44 each.
   wall: { x: 4650, columns: 2, rows: 6, hintFrom: 4120 },
 
-  // Checkpoint flag just past the wall. After touching it, a lost life starts
-  // again here, with the wall already down and the loot from before it kept.
-  checkpoint: 4790,
+  // Checkpoint flag just after the pit jump, before the heart ledges and the
+  // wall (which shields it from the Spitter behind). After touching it, a lost
+  // life starts again here with the loot from before it kept; the wall is as
+  // it was at the flag, so usually still standing.
+  checkpoint: 4245,
 
   // Reach this x (on the ground) with the wall broken to finish.
   exit: 6380,
