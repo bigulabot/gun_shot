@@ -301,6 +301,7 @@ export class LevelScene extends Phaser.Scene {
   createExit() {
     const x = this.level.exit, floor = this.level.floor
     this.house = this.add.image(x, floor, 'home').setOrigin(0.5, 1).setScale(PX).setDepth(9)
+    this.houseTop = floor - SPRITES.home.length * PX // the roof
     this.doorway = { x, y: floor - 54 } // centre of the round hole in the birdhouse
     this.add.rectangle(x, this.doorway.y, 6 * PX, 5 * PX, 0x10202c).setDepth(8) // the dark inside
     this.add.text(x, floor - 24 * PX - 24, 'HOME', { ...FONT, fontSize: '20px', color: '#10202c' }).setOrigin(0.5).setDepth(11)
@@ -629,10 +630,14 @@ export class LevelScene extends Phaser.Scene {
     if (Math.floor(now / 200) !== this.lastHudTick) {
       this.lastHudTick = Math.floor(now / 200)
       emit('progress', clamp((this.hero.x - L.start) / (L.exit - L.start), 0, 1))
-      if (!this.wallBroken) emit('objective', this.hero.x > L.wall.hintFrom ? 'Keep shooting to break the wall' : 'Find the crumbling wall')
+      const pastWall = this.hero.x > L.wall.x + L.wall.columns * STONE_WIDTH
+      if (!this.wallBroken) emit('objective', pastWall ? 'Over the wall! Head home!' : this.hero.x > L.wall.hintFrom ? 'Keep shooting to break the wall' : 'Find the crumbling wall')
     }
     if (!this.checkpointReached && L.checkpoint && this.hero.x >= L.checkpoint) this.reachCheckpoint()
-    if (this.hero.x > L.exit - 45 && this.hero.y > L.floor - 110 && this.wallBroken) this.win()
+    // Reaching the birdhouse finishes the level, however Ozo got there (even
+    // over the wall with upgrades) and even landing from above: his feet only
+    // need to come down near the roof.
+    if (this.hero.x > L.exit - 45 && this.hero.y > this.houseTop - 30) this.win()
   }
 
   updateSnapper(enemy, dx) {
