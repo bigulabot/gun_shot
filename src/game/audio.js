@@ -48,6 +48,8 @@ export function sound(name, streak = 0) {
   if (name === 'door') { note(110, 0.5, 'triangle', 0.08, 0, 70); [392, 523, 659].forEach((f, i) => note(f, 0.22, 'sine', 0.05, 0.25 + i * 0.08)) }
   if (name === 'locked') { note(220, 0.08, 'square', 0.03); note(196, 0.12, 'square', 0.03, 0.09) }
   if (name === 'tink') note(1900, 0.06, 'square', 0.02, 0, 1400)
+  if (name === 'boom') { note(160, 0.35, 'triangle', 0.09, 0, 40); note(90, 0.4, 'sine', 0.08, 0.02, 35); crackle(0.3, 0.06) }
+  if (name === 'shed') [900, 700, 520, 380].forEach((f, i) => note(f, 0.07, 'square', 0.02, i * 0.035))
 }
 
 // Background music: chiptune loops written out below as notes and played with
@@ -136,7 +138,14 @@ function playStep({ step: STEP, chords, melody, lead, drums }, step, time) {
   if (beat % 2) hiss(time, 0.03, drums === 'full' ? 0.012 : 0.009, 7000)
 }
 
-function hiss(time, duration, volume, cutoff) {
+// A burst of noise as a sound effect (explosions).
+function crackle(duration, volume) {
+  if (!state.profile.sound || !context || context.state !== 'running') return
+  hiss(context.currentTime, duration, volume, 300, context.destination)
+}
+
+// Filtered noise: the music's drums, or (with `output`) sound effects.
+function hiss(time, duration, volume, cutoff, output = musicGain) {
   if (!noise) {
     noise = context.createBuffer(1, context.sampleRate, context.sampleRate)
     const data = noise.getChannelData(0)
@@ -147,7 +156,7 @@ function hiss(time, duration, volume, cutoff) {
   filter.type = 'highpass'; filter.frequency.value = cutoff
   gain.gain.setValueAtTime(volume, time)
   gain.gain.exponentialRampToValueAtTime(0.001, time + duration)
-  source.connect(filter).connect(gain).connect(musicGain)
+  source.connect(filter).connect(gain).connect(output)
   source.start(time, Math.random() * 0.5)
   source.stop(time + duration + 0.02)
 }

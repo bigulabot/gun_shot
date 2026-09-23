@@ -14,7 +14,9 @@ const MONKEY_GRIP = { x: 5.5, y: 14 } // art pixel under the left palm frond whe
 const MONKEY_HAND = 10 // the monkey's hand, in art pixels from the left of its sprite
 const TRUNK_WIDTH = 72 // the tree trunk around a locked door, world pixels
 // Colours of each enemy kind's pop when beaten.
-const POP_COLOURS = { snapper: 0x4fc47e, spitter: 0xb07cd8, hatter: 0xef4f6a, spiky: 0xf59a3a }
+const POP_COLOURS = { snapper: 0x4fc47e, spitter: 0xb07cd8, mushy: 0xef4f6a, spike: 0xf59a3a, hopper: 0xef4f6a, curler: 0xf59a3a }
+// Enemy kinds whose picture has another name (the rest use their own name).
+const ENEMY_TEXTURES = { spike: 'spike-ball', hopper: 'mushy', curler: 'spike' }
 const FONT = { fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontStyle: 'bold' }
 const clamp = Phaser.Math.Clamp, between = Phaser.Math.Between
 const TOUCH = window.matchMedia?.('(pointer: coarse)').matches // phone or tablet: show touch tips
@@ -40,6 +42,7 @@ export class LevelScene extends Phaser.Scene {
     // optional pieces, so a level without them doesn't touch stale ones.
     this.wallCollider = this.trunkCollider = this.doorCollider = this.doorImage = this.keyItem = null
     this.rain = []
+    this.escaped = 0 // Mushies that fired and got away (not beaten)
     createArt(this)
     this.time.paused = false
     this.playTime = saved?.playTime ?? 0
@@ -489,15 +492,20 @@ export class LevelScene extends Phaser.Scene {
 
   // `y` is the top of the platform it stands on; the ground if left out.
   createEnemy(x, type, min, max, y = this.level.floor) {
-    const enemy = this.physics.add.sprite(x, y, type).setOrigin(0.5, 1).setScale(PX).setDepth(18)
+    const enemy = this.physics.add.sprite(x, y, ENEMY_TEXTURES[type] ?? type).setOrigin(0.5, 1).setScale(PX).setDepth(18)
     this.enemies.add(enemy)
-    feetBody(enemy, 53, 63)
+    if (type === 'spike') {
+      // A rolling ball spins about its middle, so its origin and body are centred.
+      enemy.setOrigin(0.5).setY(y - enemy.displayHeight / 2)
+      enemy.body.setSize(12, 12, true)
+    } else feetBody(enemy, 53, 63)
     const health = ENEMIES[type].health
+    const firstPhase = { mushy: 'walking', spike: 'rolling', curler: 'open' }[type]
     Object.assign(enemy, {
       kind: type, hp: health, maxHp: health, patrolMin: min, patrolMax: max, direction: -1,
       fireAt: this.playTime + 1300 + x % 700, warning: false, stunnedUntil: 0, onPlatform: y !== this.level.floor, healthBarUntil: 0,
-      hopAt: 0, airborne: false, crouchUntil: 0, // Hatters
-      phase: 'open', phaseUntil: this.playTime + (ENEMIES.spiky?.openTime ?? 0), // Spikies
+      phase: firstPhase, phaseUntil: this.playTime + (type === 'curler' ? ENEMIES.curler.openTime : 0), lastX: x, // Mushy, Spike, curler
+      hopAt: 0, airborne: false, crouchUntil: 0, // hopper
     })
     enemy.healthBar = this.add.graphics().setDepth(25).setVisible(false) // only shown for a moment after each hit
     enemy.alert = this.add.image(x, 0, 'alert').setScale(PX).setDepth(25).setVisible(false)
@@ -619,6 +627,7 @@ export class LevelScene extends Phaser.Scene {
       a.impactY = Phaser.Math.Linear(path.prev.y, path.y, time)
       if (kind === 'wall') this.hitWall(a)
       else if (kind === 'enemy') this.hitEnemy(a, b)
+      else if (a.explodes) this.explode(a) // a Mushy cap: hits Ozo, lands, or runs out of range
       else if (kind === 'hero') { const from = a.impactX; this.popBullet(a); this.hurt(from) }
       else this.popBullet(a)
     }
@@ -633,11 +642,14 @@ export class LevelScene extends Phaser.Scene {
 
   hitEnemy(bullet, enemy) {
     if (!bullet.active || !enemy.active || state.mode !== 'playing') return
-    if (enemy.kind === 'spiky' && enemy.phase === 'curled') {
-      // Curled up: the shot bounces off with a tink, doing no harm.
+    const shielded = (enemy.kind === 'spike' && enemy.phase !== 'bald') || (enemy.kind === 'curler' && enemy.phase === 'curled')
+    if (shielded) {
+      // Spikes (or curled up): the shot bounces off with a tink, doing no
+      // harm. A rolling Spike throws its spikes out when hit.
       this.burst(bullet.impactX ?? bullet.x, bullet.impactY ?? bullet.y, 4, 0xffffff, 0.4)
       bullet.destroy()
       sound('tink')
+      if (enemy.kind === 'spike' && enemy.phase === 'rolling') this.shedSpikes(enemy)
       return
     }
     enemy.hp -= bullet.damage
@@ -655,8 +667,9 @@ export class LevelScene extends Phaser.Scene {
     }
     // Pop: a stand-in squashes down, then puffs up white and vanishes in a
     // burst, and the drops appear where the enemy stood.
-    const { x, y, kind } = enemy
-    const ghost = this.add.image(x, y, enemy.texture.key).setOrigin(0.5, 1).setScale(PX).setFlipX(enemy.flipX).setDepth(18)
+    const { x, kind } = enemy, y = enemy.body.bottom // its feet, whatever its origin
+    const ghost = this.add.image(enemy.x, enemy.y, enemy.texture.key).setOrigin(enemy.originX, enemy.originY)
+      .setScale(PX).setFlipX(enemy.flipX).setRotation(enemy.rotation).setDepth(18)
     enemy.healthBar.destroy()
     enemy.alert.destroy()
     enemy.destroy()
@@ -836,12 +849,15 @@ export class LevelScene extends Phaser.Scene {
       enemy.alert.setPosition(enemy.x, enemy.y - 104)
       const dx = this.hero.x - enemy.x
       if (enemy.kind === 'snapper') this.updateSnapper(enemy, dx)
-      else if (enemy.kind === 'hatter') this.updateHatter(enemy, dx, now)
-      else if (enemy.kind === 'spiky') this.updateSpiky(enemy, dx, now)
+      else if (enemy.kind === 'mushy') this.updateMushy(enemy, dx, now)
+      else if (enemy.kind === 'spike') this.updateSpike(enemy, dx, now)
+      else if (enemy.kind === 'hopper') this.updateHopper(enemy, dx, now)
+      else if (enemy.kind === 'curler') this.updateCurler(enemy, dx, now)
       else this.updateSpitter(enemy, dx, now)
     }
     for (const group of [this.shots, this.enemyShots]) for (const bullet of [...group.getChildren()]) {
       if (now > bullet.expires || bullet.x < 0 || bullet.x > L.width || bullet.y > 750 || bullet.y < 0) bullet.destroy()
+      else if (bullet.pointsAlong) bullet.setRotation(Math.atan2(bullet.body.velocity.y, bullet.body.velocity.x))
     }
     for (const loot of [...this.loot.getChildren()]) {
       if (loot.kind === 'heart') continue
@@ -905,11 +921,114 @@ export class LevelScene extends Phaser.Scene {
     }
   }
 
-  // Hatter: when Ozo is near it crouches (with a "!"), then hops towards him,
+  // Mushy: walks to and fro. When Ozo comes close it stops and crouches with
+  // a "!", then fires its cap at where he's standing and sinks into the
+  // ground: one attack, then it's gone.
+  updateMushy(enemy, dx, now) {
+    const t = ENEMIES.mushy
+    if (enemy.phase === 'burrowing') return
+    if (enemy.phase === 'windup') {
+      enemy.setVelocityX(0)
+      if (now >= enemy.phaseUntil) this.fireCap(enemy)
+      return
+    }
+    if (Math.abs(dx) < t.fireRange && (enemy.body.blocked.down || enemy.body.touching.down)) {
+      enemy.phase = 'windup'; enemy.phaseUntil = now + t.windUp
+      enemy.setFlipX(dx < 0).setVelocityX(0)
+      enemy.alert.setVisible(true)
+      return
+    }
+    if (enemy.x <= enemy.patrolMin) enemy.direction = 1
+    if (enemy.x >= enemy.patrolMax) enemy.direction = -1
+    enemy.setVelocityX(enemy.direction * t.walkSpeed).setFlipX(enemy.direction < 0)
+  }
+
+  // The cap flies in an arc to where Ozo is now (he can step away) and
+  // explodes on whatever it hits. Mushy, capless, sinks out of sight.
+  fireCap(enemy) {
+    const t = ENEMIES.mushy, T = t.capFlightTime
+    const x = enemy.x, y = enemy.y - 74 // where the cap sits on Mushy's head
+    const targetX = this.hero.x, targetY = this.hero.y - 20
+    const cap = this.spawnShot(true, x, y, (targetX - x) / T, (targetY - y - 0.5 * t.capGravity * T * T) / T, 'mushy-cap')
+    if (cap) {
+      cap.body.setAllowGravity(true).setGravityY(t.capGravity - WORLD.gravity).setSize(40 / PX, 20 / PX, true)
+      cap.explodes = true
+      this.tweens.add({ targets: cap, angle: targetX > x ? 360 : -360, duration: T * 1000 }) // it spins as it flies
+    }
+    sound('pop')
+    enemy.phase = 'burrowing'
+    enemy.alert.setVisible(false)
+    enemy.body.enable = false
+    enemy.setTexture('mushy-stalk')
+    this.burst(enemy.x, enemy.y - 4, 8, 0x8a5a32, 0.8)
+    // Sinking: slide down, cropping away whatever has gone below the ground.
+    const startY = enemy.y, height = enemy.frame.height
+    this.tweens.add({
+      targets: enemy, y: startY + enemy.displayHeight, duration: t.burrowTime, ease: 'Quad.easeIn',
+      onUpdate: () => enemy.setCrop(0, 0, enemy.frame.width, Math.max(0, height - (enemy.y - startY) / PX)),
+      onComplete: () => { enemy.healthBar.destroy(); enemy.alert.destroy(); enemy.destroy(); this.escaped++ },
+    })
+  }
+
+  // A Mushy cap goes off: a flash ring, sparks and a shake. Ozo is hurt if
+  // he's inside the blast.
+  explode(cap) {
+    const x = cap.impactX ?? cap.x, y = cap.impactY ?? cap.y, radius = ENEMIES.mushy.blastRadius
+    cap.destroy()
+    const ring = this.add.circle(x, y, radius, 0xffd23f, 0.25).setStrokeStyle(6, 0xfff7b0).setDepth(31).setScale(0.3)
+    this.tweens.add({ targets: ring, scale: 1, alpha: 0, duration: 280, ease: 'Quad.easeOut', onComplete: () => ring.destroy() })
+    this.burst(x, y, 14, 0xef4f6a, 1.3)
+    this.burst(x, y, 10, 0xffd23f, 1)
+    this.burst(x, y, 6, 0xffffff, 0.8)
+    this.cameras.main.shake(140, 0.004)
+    sound('boom')
+    if (Math.hypot(this.hero.x - x, this.hero.y - 32 - y) < radius) this.hurt(x)
+  }
+
+  // Spike: rolls to and fro between its patrol edges, spinning as it goes.
+  // After throwing its spikes it stays bald and still (it can be hurt now),
+  // then its spikes grow back, flashing, and it rolls again.
+  updateSpike(enemy, dx, now) {
+    const t = ENEMIES.spike
+    if (enemy.phase === 'bald') {
+      enemy.setVelocityX(0)
+      if (now >= enemy.phaseUntil) { enemy.phase = 'regrow'; enemy.phaseUntil = now + t.regrowTime }
+      return
+    }
+    if (enemy.phase === 'regrow') {
+      enemy.setVelocityX(0)
+      enemy.setTexture(Math.floor(now / 80) % 2 ? 'spike-ball' : 'spike-bald')
+      if (now >= enemy.phaseUntil) { enemy.phase = 'rolling'; enemy.setTexture('spike-ball') }
+      return
+    }
+    if (enemy.x <= enemy.patrolMin) enemy.direction = 1
+    if (enemy.x >= enemy.patrolMax) enemy.direction = -1
+    enemy.setVelocityX(enemy.direction * t.rollSpeed)
+    enemy.rotation += (enemy.x - enemy.lastX) / 28 // rolling: turn as far as it travels
+    enemy.lastX = enemy.x
+  }
+
+  // Shot while spiky: Spike flings its spikes out in a ring, and goes bald.
+  shedSpikes(enemy) {
+    const t = ENEMIES.spike
+    for (let i = 0; i < t.spikes; i++) {
+      const angle = (i + 0.5) / t.spikes * Math.PI * 2
+      const spike = this.spawnShot(true, enemy.x + Math.cos(angle) * 26, enemy.y + Math.sin(angle) * 26, Math.cos(angle) * t.spikeSpeed, Math.sin(angle) * t.spikeSpeed, 'thorn')
+      if (!spike) continue
+      spike.body.setAllowGravity(true).setGravityY(t.spikeGravity - WORLD.gravity)
+      spike.setFlipX(false).setRotation(angle)
+      spike.pointsAlong = true // keeps turning to face where it flies
+    }
+    enemy.phase = 'bald'; enemy.phaseUntil = this.playTime + t.baldTime
+    enemy.setTexture('spike-bald').setRotation(0).setVelocityX(0)
+    sound('shed')
+  }
+
+  // Hopper (saved for later): when Ozo is near it crouches (with a "!"), then hops towards him,
   // over and over. Hops never leave its patrol area: if one would, it hops on
   // the spot. In the air it tilts and is too high for Ozo's shots.
-  updateHatter(enemy, dx, now) {
-    const t = ENEMIES.hatter, body = enemy.body
+  updateHopper(enemy, dx, now) {
+    const t = ENEMIES.hopper, body = enemy.body
     enemy.setFlipX(dx < 0)
     if (!(body.blocked.down || body.touching.down)) return // mid-hop: keep flying
     if (enemy.airborne) { enemy.airborne = false; enemy.hopAt = now + t.hopEvery; enemy.setAngle(0) } // just landed
@@ -927,16 +1046,16 @@ export class LevelScene extends Phaser.Scene {
     enemy.airborne = true
   }
 
-  // Spiky: open (can be hit) -> glowing warning -> fires a spread of burrs at
+  // Curler (saved for later): open (can be hit) -> glowing warning -> fires a spread of burrs at
   // Ozo -> curled up (shots bounce off) -> open again. It only starts the
   // warning when Ozo is in range, so from far away it just waits, open.
-  updateSpiky(enemy, dx, now) {
-    const t = ENEMIES.spiky
+  updateCurler(enemy, dx, now) {
+    const t = ENEMIES.curler
     enemy.setFlipX(dx < 0)
     if (now < enemy.phaseUntil) return
     if (enemy.phase === 'open' && Math.abs(dx) < t.fireRange) {
       enemy.phase = 'charge'; enemy.phaseUntil = now + t.windUp
-      enemy.setTexture('spiky-charge'); enemy.alert.setVisible(true)
+      enemy.setTexture('spike-charge'); enemy.alert.setVisible(true)
     } else if (enemy.phase === 'charge') {
       const x = enemy.x + Math.sign(dx) * 20, y = enemy.y - 36
       const aim = Math.atan2(this.hero.y - 37 - y, this.hero.x - x)
@@ -945,10 +1064,10 @@ export class LevelScene extends Phaser.Scene {
         this.spawnShot(true, x, y, Math.cos(angle) * t.shotSpeed, Math.sin(angle) * t.shotSpeed, 'burr')
       }
       enemy.phase = 'curled'; enemy.phaseUntil = now + t.curledTime
-      enemy.setTexture('spiky-curled'); enemy.alert.setVisible(false)
+      enemy.setTexture('spike-curled'); enemy.alert.setVisible(false)
     } else if (enemy.phase === 'curled') {
       enemy.phase = 'open'; enemy.phaseUntil = now + t.openTime
-      enemy.setTexture('spiky')
+      enemy.setTexture('spike')
     }
   }
 }

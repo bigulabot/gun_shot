@@ -73,9 +73,37 @@ export const ENEMIES = {
     shotSpeed: 185,
     shotRange: 600,
   },
-  // Finlay's Hatter: hops towards Ozo. In the air it's above his shots, so
-  // he has to hit it when it lands.
-  hatter: {
+  // Finlay's Mushy: walks to and fro. When Ozo comes close it crouches ("!"),
+  // fires its cap at where he's standing, then sinks into the ground and is
+  // gone: one attack only. The cap explodes where it lands. Shoot Mushy before
+  // it fires to beat it (and to count it for the "every critter" star).
+  mushy: {
+    health: 2,
+    walkSpeed: 40,
+    fireRange: 330, // fires when Ozo is this close (just inside Ozo's 360 range: rush in and it fires first)
+    windUp: 450, // crouching "!" before the cap flies
+    capFlightTime: 0.85, // seconds for the cap to reach where Ozo was
+    capGravity: 900, // how steeply the cap arcs
+    blastRadius: 85, // Ozo is hurt if he's this close when it explodes
+    burrowTime: 700, // ms to sink into the ground after firing
+  },
+  // Finlay's Spike: rolls to and fro and hurts to touch. Shots don't hurt it
+  // while it has its spikes: instead it flings them out in a ring (dodge
+  // them!) and stops, bald. Then shots hurt, until its spikes grow back.
+  spike: {
+    health: 3,
+    rollSpeed: 110,
+    spikes: 8, // flung out evenly all round
+    spikeSpeed: 300,
+    spikeGravity: 600, // they arc up and fall back down
+    baldTime: 2600, // stopped and bald: shots hurt it
+    regrowTime: 450, // spikes growing back (flashing), then it rolls again
+  },
+  // Saved for later (Finlay's call): two more critter abilities, not in any
+  // level yet. They borrow Mushy's and Spike's pictures until they get their own.
+  // Hopper: crouches with a "!", then hops towards Ozo. In the air it's above
+  // his shots, so he has to hit it when it lands.
+  hopper: {
     health: 3,
     noticeRange: 380, // starts hopping towards Ozo inside this distance
     hopEvery: 1300, // ms between hops (counted from each landing)
@@ -83,9 +111,9 @@ export const ENEMIES = {
     hopSpeed: 150, // sideways speed during a hop (about 100 px per hop)
     hopVelocity: 520, // upward speed: hops about 85 px high
   },
-  // Finlay's Spiky: stays put. Open (can be hit) -> glows (warning) -> fires
-  // a spread of burrs -> curls up (shots bounce off) -> open again.
-  spiky: {
+  // Curler: stays put. Open (can be hit) -> glows (warning) -> fires a
+  // spread of burrs -> curls up (shots bounce off) -> open again.
+  curler: {
     health: 4,
     fireRange: 470, // only fires when Ozo is this close (horizontally)
     openTime: 1500, // vulnerable, before it starts to glow

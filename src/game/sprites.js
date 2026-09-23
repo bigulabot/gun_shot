@@ -189,7 +189,14 @@ export const SPRITES = {
     '.uWu.',
     '..u..',
   ],
-  // A Spiky's burr: fired three at a time in a spread.
+  // One of Spike's spikes, flung out when he's shot (pointing right; turned
+  // to face where it flies).
+  thorn: [
+    'DX.....',
+    'DXXXXjj',
+    'DX.....',
+  ],
+  // The saved-for-later curler's burr: fired three at a time in a spread.
   burr: [
     '.D.D.',
     'DXHXD',
@@ -584,9 +591,10 @@ export const SPRITES = {
 
   // Finlay's enemy drawings, first met in Rainy Ridge. Same 4 px art pixels
   // as the Snapper and Spitter. Previews: art/finlay-enemies/.
-  // Hatter: an egg on little boots, in a floppy swirly hat, with a round "O"
-  // mouth. It hops towards Ozo.
-  hatter: [
+  // Mushy: a mushroom on little boots, with a big swirly cap and a round "O"
+  // mouth. It fires its cap (the top 7 rows: see 'mushy-cap' below), then
+  // sinks into the ground.
+  mushy: [
     '...rrrr.......',
     '..rryrrrr.....',
     '.rryyrrrrr....',
@@ -610,10 +618,11 @@ export const SPRITES = {
     '.....F..F.....',
     '...FFF..FFF...',
   ],
-  // Spiky: a round spiky ball with a crown of big spikes, little spikes round
-  // the sides, big eyes, a flat mouth and skinny legs. It fires burrs, then
-  // curls up (below) so shots bounce off.
-  spiky: [
+  // Spike, as Finlay drew him: a round ball with a crown of big spikes, little
+  // spikes round the sides, big eyes, a flat mouth and skinny legs. In the
+  // game he rolls as 'spike-ball' (below). This standing pose, 'spike-charge'
+  // and 'spike-curled' belong to the "curler" critter saved for later.
+  spike: [
     '..........D.....',
     '.........DX.....',
     '......D..DXX....',
@@ -636,9 +645,9 @@ export const SPRITES = {
     '......F..F......',
     '.....FF..FFF....',
   ],
-  // Spiky curled up: legs tucked, eyes shut, spikes all round. Same size as
-  // 'spiky', so its collision box doesn't change.
-  'spiky-curled': [
+  // Spike curled up: legs tucked, eyes shut, spikes all round. Same size as
+  // 'spike', so its collision box doesn't change.
+  'spike-curled': [
     '................',
     '................',
     '................',
@@ -660,6 +669,26 @@ export const SPRITES = {
     '.DX.CCllllCC.XD.',
     '..D.DCCCCCCD.D..',
     '...D.D.DD.D.D...',
+  ],
+  // Spike rolling: a ball with spikes all round and wide-open eyes. Nearly
+  // round, so it looks right spinning about its middle.
+  'spike-ball': [
+    '.......DD.......',
+    '.D.....XX.....D.',
+    '..X....XX....X..',
+    '...X.CllllC.X...',
+    '....CllllllC....',
+    '...CllllllllC...',
+    '...CleelleelC...',
+    'DXXClekllkelCXXD',
+    'DXXCllllllllCXXD',
+    '...CllkkkkllC...',
+    '...CllllllllC...',
+    '....CllllllC....',
+    '...X.CllllC.X...',
+    '..X....XX....X..',
+    '.D.....XX.....D.',
+    '.......DD.......',
   ],
 
   // Finlay's bosses, not in any level yet. Previews: art/finlay-bosses/.
@@ -793,5 +822,11 @@ export const SPRITES = {
   ],
 }
 
-// Spiky about to fire: the same sprite with its spikes glowing red.
-SPRITES['spiky-charge'] = SPRITES.spiky.map(row => row.replace(/X/g, 'H').replace(/D/g, 'R'))
+// Spike about to fire (the curler saved for later): spikes glowing red.
+SPRITES['spike-charge'] = SPRITES.spike.map(row => row.replace(/X/g, 'H').replace(/D/g, 'R'))
+// Mushy's cap on its own, flying at Ozo: the top 7 rows of Mushy.
+SPRITES['mushy-cap'] = SPRITES.mushy.slice(0, 7)
+// Mushy without his cap, sinking into the ground. Same size as Mushy.
+SPRITES['mushy-stalk'] = SPRITES.mushy.map((row, y) => y < 7 ? '.'.repeat(row.length) : row)
+// Spike without his spikes, after throwing them: now he can be hurt.
+SPRITES['spike-bald'] = SPRITES['spike-ball'].map(row => row.replace(/[DX]/g, '.'))

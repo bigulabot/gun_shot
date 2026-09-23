@@ -163,16 +163,19 @@ export function setupVerification(game) {
     const groundEnemies = L.enemies.filter(([, , , , y]) => y === undefined).length
     if (wall && !s.wallBroken) throw new Error('Finished without breaking the wall')
     if (L.door && !s.doorOpen) throw new Error('Finished without opening the door')
-    if (!state.run.coins || !state.run.research || state.run.defeated < groundEnemies) throw new Error(`Missing enemy rewards: beat ${state.run.defeated} of ${groundEnemies} ground enemies`)
+    // Every ground enemy is beaten, or (a Mushy that fired its cap) gone.
+    if (!state.run.coins || !state.run.research || state.run.defeated + s.escaped < groundEnemies) throw new Error(`Missing enemy rewards: beat ${state.run.defeated} (and ${s.escaped} got away) of ${groundEnemies} ground enemies`)
+    lastRouteEscaped = s.escaped
     if (Object.values(state.profile.upgrades).some(Boolean)) throw new Error('Baseline used a talent')
     lastRouteTime = state.run.seconds
   }
-  let lastRouteTime = 0
+  let lastRouteTime = 0, lastRouteEscaped = 0
   for (const level of LEVELS) {
     const goal = level.wall ? 'breakable wall' : 'raft, key and door'
     panel.querySelector(`#verify-route-${level.id}`).onclick = () => check(`route ${level.id}: no upgrades, enemies, loot, ${goal}, victory`, async () => {
       await playRoute(level)
       output.dataset.seconds = lastRouteTime // how long the careful player took, for setting star times
+      output.dataset.escaped = lastRouteEscaped
     })
   }
   panel.querySelector('#verify-death').onclick = () => check('damage protection, silhouette, heart, restart', async () => {

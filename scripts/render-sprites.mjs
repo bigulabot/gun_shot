@@ -1,6 +1,6 @@
 // Renders Finlay's sprites from sprites.js as PNG previews: each one big on
 // its own, plus a line-up next to Ozo at the size they'd be in the game.
-//   art/finlay-enemies/  hatter, spiky (with the Snapper and Spitter)
+//   art/finlay-enemies/  mushy, spike and rolling spike-ball (with the Snapper and Spitter)
 //   art/finlay-bosses/   prince-nova, ring-star, rap-bandit
 // Run with: node scripts/render-sprites.mjs
 import { writeFileSync, mkdirSync } from 'node:fs'
@@ -9,7 +9,7 @@ import { canvas, fillRect, bounds, drawRows, encodePNG } from './pixel-png.mjs'
 
 const SKY = '#9ad8f0', GRASS = '#78d04e', DIRT = '#c27a4a'
 const sets = [
-  { dir: 'art/finlay-enemies', sprites: ['hatter', 'spiky'], lineup: ['ozo-idle', 'snapper', 'spitter', 'hatter', 'spiky'] },
+  { dir: 'art/finlay-enemies', sprites: ['mushy', 'spike', 'spike-ball'], lineup: ['ozo-idle', 'snapper', 'spitter', 'mushy', 'spike', 'spike-ball'] },
   { dir: 'art/finlay-bosses', sprites: ['prince-nova', 'ring-star', 'rap-bandit'], lineup: ['ozo-idle', 'prince-nova', 'ring-star', 'rap-bandit'] },
 ]
 
