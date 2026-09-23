@@ -4,14 +4,17 @@ import { PX, SPRITES } from '../game/sprites.js'
 import { state, emit, setMode, collect, beginRun, bankRun, loseRun, awardStars } from '../game/state.js'
 import { sound } from '../game/audio.js'
 import { bodySweep, sweep, rangeEnd, canLandOnPlatform, shotRange, ENEMY_SHOT_RANGE } from '../game/combat.js'
-import { PLAYER, BLASTER, ENEMIES, WALL, LOOT, CAMERA, FEEL } from '../game/tuning.js'
-import canopy from '../levels/canopy.js'
+import { PLAYER, BLASTER, ENEMIES, WALL, LOOT, CAMERA, FEEL, WORLD } from '../game/tuning.js'
+import { LEVELS } from '../levels/index.js'
 
 const STONE_WIDTH = 50, STONE_HEIGHT = 44 // wall stones, world pixels
 const GROUND_DEPTH = 210 // ground reaches below the bottom of the screen
 const MUZZLE_X = 42, MUZZLE_Y = 28 // where shots leave the blaster, from Ozo's feet
 const MONKEY_GRIP = { x: 5.5, y: 14 } // art pixel under the left palm frond where a monkey holds on
 const MONKEY_HAND = 10 // the monkey's hand, in art pixels from the left of its sprite
+const TRUNK_WIDTH = 72 // the tree trunk around a locked door, world pixels
+// Colours of each enemy kind's pop when beaten.
+const POP_COLOURS = { snapper: 0x4fc47e, spitter: 0xb07cd8, hatter: 0xef4f6a, spiky: 0xf59a3a }
 const FONT = { fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontStyle: 'bold' }
 const clamp = Phaser.Math.Clamp, between = Phaser.Math.Between
 const TOUCH = window.matchMedia?.('(pointer: coarse)').matches // phone or tablet: show touch tips
@@ -27,11 +30,16 @@ export class LevelScene extends Phaser.Scene {
   constructor() { super('LevelScene') }
 
   create(data = {}) {
-    const L = this.level = data.level ?? canopy
+    const L = this.level = data.level ?? LEVELS[0]
+    const theme = L.theme ?? {}
     // Starting again from the checkpoint, or from the very beginning (which forgets it).
     const saved = data.fromCheckpoint && L.checkpoint ? state.checkpoint : null
     if (!saved) state.checkpoint = null
     const after = x => !saved || x > L.checkpoint // things behind the checkpoint are already done
+    // The scene object is reused for every level: forget the last level's
+    // optional pieces, so a level without them doesn't touch stale ones.
+    this.wallCollider = this.trunkCollider = this.doorCollider = this.doorImage = this.keyItem = null
+    this.rain = []
     createArt(this)
     this.time.paused = false
     this.playTime = saved?.playTime ?? 0
@@ -45,6 +53,9 @@ export class LevelScene extends Phaser.Scene {
     this.dashUntil = 0
     this.dashReady = 0
     this.wallBroken = false
+    this.hasKey = Boolean(saved?.hasKey) // levels with a locked door: as it was at the flag
+    this.doorOpen = Boolean(saved?.doorOpen)
+    this.lockedToastAt = -10000
     this.runStride = 0
     this.finished = false
     this.lastHudTick = -1
@@ -59,15 +70,17 @@ export class LevelScene extends Phaser.Scene {
     if (saved) { Object.assign(state.run, { coins: saved.coins, research: saved.research, defeated: saved.defeated }); emit('profile') }
     this.physics.world.setBounds(0, -200, L.width, 1150)
     this.physics.world.setBoundsCollision(true, true, false, false)
-    this.cameras.main.setBounds(0, 0, L.width, 720)
+    this.cameras.main.setBounds(0, 0, L.width, 720).setBackgroundColor(theme.sky ?? '#9ad8f0')
     this.drawBackground()
 
     this.platforms = this.physics.add.staticGroup()
     for (const [x, width] of L.ground) this.addPlatform(x, L.floor, width, GROUND_DEPTH)
     this.drawPits()
     for (const [x, y, width, height = 25] of L.ledges) this.addPlatform(x, y, width, height, true)
+    this.createMovers()
     this.tipLabels = L.tips.map(([x, y, text, touchText]) => this.tip(x, y, TOUCH && touchText ? touchText : text))
     this.createWall(Boolean(saved?.wallBroken)) // as it was when Ozo touched the flag
+    this.createDoor()
     this.createCheckpoint(Boolean(saved))
     this.createExit()
 
@@ -84,9 +97,15 @@ export class LevelScene extends Phaser.Scene {
     this.loot = this.physics.add.group({ allowGravity: false })
     for (const [x, y, kind] of L.pickups) if (after(x)) this.createLoot(x, y, kind)
     for (const [x, y, w, h] of L.clouds ?? []) this.cloud(x, y, w, h, 26) // in front of loot: secret stashes
+    this.createKey()
+    if (theme.rain) this.makeRain()
 
-    this.physics.add.collider(this.hero, this.platforms, undefined, (hero, platform) => canLandOnPlatform(hero.body, platform))
-    this.physics.add.collider(this.hero, this.wallCollider)
+    const oneWay = (hero, platform) => canLandOnPlatform(hero.body, platform)
+    this.physics.add.collider(this.hero, this.platforms, undefined, oneWay)
+    this.physics.add.collider(this.hero, this.movers, undefined, oneWay)
+    if (this.wallCollider) this.physics.add.collider(this.hero, this.wallCollider)
+    if (this.doorCollider) this.physics.add.collider(this.hero, [this.trunkCollider, this.doorCollider])
+    if (this.keyItem) this.physics.add.overlap(this.hero, this.keyItem, () => this.takeKey())
     this.physics.add.collider(this.enemies, this.platforms)
     this.physics.add.overlap(this.hero, this.enemies, (_, enemy) => this.hurt(enemy.x))
     this.physics.add.overlap(this.hero, this.loot, (_, loot) => this.takeLoot(loot))
@@ -108,20 +127,38 @@ export class LevelScene extends Phaser.Scene {
     if (!data.autostart) {
       this.hero.setVisible(false)
       for (const label of this.tipLabels) label.setVisible(false)
-      const camera = this.cameras.main
+      const camera = this.cameras.main, [from, to] = L.menuPan
       camera.stopFollow()
-      camera.scrollX = CAMERA.menuPanFrom
-      this.tweens.add({ targets: camera, scrollX: CAMERA.menuPanTo, duration: CAMERA.menuPanTime, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' })
+      camera.scrollX = from
+      this.tweens.add({ targets: camera, scrollX: to, duration: CAMERA.menuPanTime, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' })
     }
     setMode(data.autostart ? 'playing' : 'title')
     if (data.autostart) this.physics.resume()
-    emit('level', { id: L.id, name: L.name, starTime: L.starTime })
+    emit('level', { id: L.id, name: L.name, starTime: L.starTime, music: theme.music })
     emit('ready', portraitURL())
     emit('health', state.health)
+    emit('key', this.hasKey && !this.doorOpen)
     emit('progress', saved ? (L.checkpoint - L.start) / (L.exit - L.start) : 0)
-    emit('objective', saved?.wallBroken ? 'Path clear. Head home!' : 'Find the crumbling wall')
+    emit('objective', this.objective())
   }
 
+  // What the HUD tells Ozo to do next, for this level's goal.
+  objective() {
+    const L = this.level, x = this.hero.x
+    if (L.wall) {
+      if (this.wallBroken) return 'Path clear. Head home!'
+      if (x > L.wall.x + L.wall.columns * STONE_WIDTH) return 'Over the wall! Head home!'
+      return x > L.wall.hintFrom ? 'Keep shooting to break the wall' : 'Find the crumbling wall'
+    }
+    if (L.door) {
+      if (this.doorOpen) return 'Door open! Head home!'
+      if (this.hasKey) return 'Take the key to the door'
+      return x > L.door.hintFrom ? 'The door is locked. Find the key!' : 'Find the key'
+    }
+    return 'Head home!'
+  }
+
+  startLevel(level) { this.scene.restart({ autostart: true, level }) }
   startRun() { this.scene.restart({ autostart: true, level: this.level }) }
   restartFromCheckpoint() { this.scene.restart({ autostart: true, level: this.level, fromCheckpoint: true }) }
   goHome() { this.scene.restart({ autostart: false, level: this.level }) }
@@ -137,23 +174,30 @@ export class LevelScene extends Phaser.Scene {
   freeze(frozen) {
     if (frozen) { this.physics.pause(); this.tweens.pauseAll() } else { this.physics.resume(); this.tweens.resumeAll() }
     this.time.paused = frozen
+    for (const emitter of this.rain ?? []) if (frozen) emitter.pause(); else emitter.resume()
   }
 
   drawBackground() {
     // Three layers of jungle, each moving slower than the level the further away it is.
     // A layer moving at `speed` must cover the screen plus that share of the level.
-    const L = this.level, cover = speed => 1280 + L.width * speed
+    const L = this.level, theme = L.theme ?? {}, cover = speed => 1280 + L.width * speed
+    // A rainy level darkens the background by multiplying it with its tint.
+    const tinted = image => theme.tint ? image.setTint(theme.tint) : image
     const farWidth = 64 * PX * 2
+    // Rain clouds, far away, under the grey sky.
+    if (theme.rain) for (let i = 0, x = 80; x < cover(0.15); i++, x += 430 + (i * 137) % 260) {
+      this.cloud(x, 45 + (i * 47) % 70, 300 + (i * 83) % 220, 64, -14, [0x74899a, 0x62768a], 0.15)
+    }
     for (let x = -300; x < cover(0.12); x += farWidth) { // faint, farthest trees
-      this.add.image(x, L.floor - 80, 'jungle-far').setOrigin(0, 1).setScale(PX * 2).setScrollFactor(0.12).setDepth(-13).setFlipX(true).setAlpha(0.45)
+      tinted(this.add.image(x, L.floor - 80, 'jungle-far').setOrigin(0, 1).setScale(PX * 2).setScrollFactor(0.12).setDepth(-13).setFlipX(true).setAlpha(0.45))
     }
     for (let x = 0; x < cover(0.25); x += farWidth) {
-      this.add.image(x, L.floor + 16, 'jungle-far').setOrigin(0, 1).setScale(PX * 2).setScrollFactor(0.25).setDepth(-12)
+      tinted(this.add.image(x, L.floor + 16, 'jungle-far').setOrigin(0, 1).setScale(PX * 2).setScrollFactor(0.25).setDepth(-12))
     }
     // Palms and bushes: spread out unevenly, but the same every time.
     for (let i = 0, x = 60; x < cover(0.5); i++, x += 230 + (i * 97) % 190) {
-      this.add.image(x, L.floor + 12, 'palm').setOrigin(0.5, 1).setScale(PX).setScrollFactor(0.5).setDepth(-11).setFlipX(i % 2 === 1)
-      this.add.image(x + 90 + (i * 53) % 80, L.floor + 6, 'bush').setOrigin(0.5, 1).setScale(PX).setScrollFactor(0.5).setDepth(-11)
+      tinted(this.add.image(x, L.floor + 12, 'palm').setOrigin(0.5, 1).setScale(PX).setScrollFactor(0.5).setDepth(-11).setFlipX(i % 2 === 1))
+      tinted(this.add.image(x + 90 + (i * 53) % 80, L.floor + 6, 'bush').setOrigin(0.5, 1).setScale(PX).setScrollFactor(0.5).setDepth(-11))
       // Every third palm has a monkey hanging by one hand under a frond,
       // swinging gently from that hand. Flipped palms get a flipped monkey
       // on the other frond, so it always dangles outwards. Drawn as a soft
@@ -171,9 +215,31 @@ export class LevelScene extends Phaser.Scene {
     }
     // Vines hanging from the treetops above the screen.
     for (let i = 0, x = 150; x < cover(0.8); i++, x += 330 + (i * 71) % 240) {
-      this.add.image(x, -8 - (i % 3) * 24, 'vine').setOrigin(0.5, 0).setScale(PX).setScrollFactor(0.8).setDepth(-9)
+      tinted(this.add.image(x, -8 - (i % 3) * 24, 'vine').setOrigin(0.5, 0).setScale(PX).setScrollFactor(0.8).setDepth(-9))
     }
-    this.drawBirds()
+    if (theme.birds !== false) this.drawBirds() // birds stay home when it rains
+    // Puddles on the ground: [x, width], a darker pool with a light edge.
+    for (const [x, width] of theme.puddles ?? []) {
+      this.add.rectangle(x, L.floor + PX, width, 2 * PX, 0x5d7c8f).setOrigin(0).setDepth(11.5)
+      this.add.rectangle(x + PX, L.floor + PX, width - 2 * PX, PX, 0x9db8c7).setOrigin(0).setDepth(11.5)
+    }
+  }
+
+  // Rain over everything (fixed to the screen), and little splashes along the
+  // ground. They're particle emitters, paused with the game.
+  makeRain() {
+    const floor = this.level.floor
+    const drops = this.add.particles(0, 0, 'px', {
+      x: { min: -200, max: 1480 }, y: -30, lifespan: 850,
+      speedY: { min: 900, max: 1100 }, speedX: { min: -170, max: -140 }, rotate: 9,
+      scaleX: 2, scaleY: 18, alpha: 0.4, tint: 0xd6e8f2, quantity: 2, frequency: 12,
+    }).setScrollFactor(0).setDepth(45)
+    const splashes = this.add.particles(0, 0, 'px', {
+      x: { min: 0, max: 1280 }, y: floor - 2, lifespan: 260,
+      speedX: { min: -50, max: 50 }, speedY: { min: -120, max: -60 }, gravityY: 700,
+      scale: 3, alpha: { start: 0.7, end: 0 }, tint: 0xd6e8f2, quantity: 1, frequency: 30,
+    }).setScrollFactor(0).setDepth(12)
+    this.rain = [drops, splashes]
   }
 
   // A handful of tiny birds drifting lazily across the sky, far in the background.
@@ -206,12 +272,13 @@ export class LevelScene extends Phaser.Scene {
   }
 
   addPlatform(x, y, width, height, oneWay = false) {
+    const tint = this.level.theme?.groundTint ?? 0xffffff // wet ground is a little darker
     if (oneWay) {
       // Always drawn as one plank, whatever the collision height.
-      this.add.tileSprite(x, y, width, SPRITES.ledge.length * PX, 'ledge').setOrigin(0).setTileScale(PX).setDepth(10)
+      this.add.tileSprite(x, y, width, SPRITES.ledge.length * PX, 'ledge').setOrigin(0).setTileScale(PX).setDepth(10).setTint(tint)
     } else {
-      this.add.tileSprite(x, y, width, height, 'dirt').setOrigin(0).setTileScale(PX).setDepth(10)
-      this.add.tileSprite(x, y, width, 3 * PX, 'grass').setOrigin(0).setTileScale(PX).setDepth(11)
+      this.add.tileSprite(x, y, width, height, 'dirt').setOrigin(0).setTileScale(PX).setDepth(10).setTint(tint)
+      this.add.tileSprite(x, y, width, 3 * PX, 'grass').setOrigin(0).setTileScale(PX).setDepth(11).setTint(tint)
     }
     const collider = this.add.rectangle(x + width / 2, y + height / 2, width, height, 0, 0)
     this.physics.add.existing(collider, true)
@@ -222,16 +289,17 @@ export class LevelScene extends Phaser.Scene {
   // A tutorial tip on a pixel cloud sized to fit the words.
   tip(x, y, text) {
     const label = this.add.text(x, y, text, { ...FONT, fontSize: '22px', color: '#10202c' }).setOrigin(0.5).setDepth(6)
-    this.cloud(x, y, label.width + 56, label.height + 28, 5)
+    this.cloud(x, y, label.width + 56, label.height + 28, 5, this.level.theme?.cloud)
     return label
   }
 
   // A pixel cloud centred on (x, y). Tip clouds sit behind their words; stash
-  // clouds sit in front of the loot hidden inside them.
-  cloud(x, y, width, height, depth) {
+  // clouds sit in front of the loot hidden inside them; rain clouds drift far
+  // behind (a `scrollFactor` below 1 moves them slower than the level).
+  cloud(x, y, width, height, depth, [fill, shade] = [0xffffff, 0xc9e3ee], scrollFactor = 1) {
     const snap = v => Math.round(v / PX) * PX
     const w = snap(width), h = snap(height), left = snap(x - w / 2), top = snap(y - h / 2)
-    const g = this.add.graphics().setDepth(depth)
+    const g = this.add.graphics().setDepth(depth).setScrollFactor(scrollFactor)
     // A box with its corners stepped off, so it looks drawn in pixels.
     const puff = (bx, by, bw, bh, color) => g.fillStyle(color).fillRect(bx + PX, by, bw - 2 * PX, bh).fillRect(bx, by + PX, bw, bh - 2 * PX)
     // Every cloud is puffy on top; most also bulge underneath, with none, one
@@ -240,14 +308,15 @@ export class LevelScene extends Phaser.Scene {
     // art pixels it hangs down.
     const below = [[], [[0.22, 0.34, 4]], [[0.12, 0.3, 4], [0.56, 0.28, 3]]][Math.floor(x / 10) % 3]
       .map(([fx, fw, drop]) => [left + snap(w * fx), top + h - 4 * PX, snap(w * fw), (4 + drop) * PX])
-    for (const [bx, by, bw, bh] of [[left, top, w, h], ...below]) puff(bx + PX, by + 2 * PX, bw, bh, 0xc9e3ee) // shadows
-    puff(left + snap(w * 0.1), top - 4 * PX, snap(w * 0.32), 8 * PX, 0xffffff)
-    puff(left + snap(w * 0.48), top - 7 * PX, snap(w * 0.3), 10 * PX, 0xffffff)
-    for (const [bx, by, bw, bh] of below) puff(bx, by, bw, bh, 0xffffff)
-    puff(left, top, w, h, 0xffffff)
+    for (const [bx, by, bw, bh] of [[left, top, w, h], ...below]) puff(bx + PX, by + 2 * PX, bw, bh, shade) // shadows
+    puff(left + snap(w * 0.1), top - 4 * PX, snap(w * 0.32), 8 * PX, fill)
+    puff(left + snap(w * 0.48), top - 7 * PX, snap(w * 0.3), 10 * PX, fill)
+    for (const [bx, by, bw, bh] of below) puff(bx, by, bw, bh, fill)
+    puff(left, top, w, h, fill)
   }
 
   createWall(broken = false) {
+    if (!this.level.wall) { this.wallHp = 0; this.wallBlocks = []; return } // levels with a locked door instead
     const { x, columns, rows } = this.level.wall, floor = this.level.floor
     this.wallHp = broken ? 0 : WALL.health
     this.wallBroken = broken
@@ -261,6 +330,108 @@ export class LevelScene extends Phaser.Scene {
     if (broken) this.wallCollider.body.enable = false
   }
 
+  // Moving platforms ("rafts"): one-way planks that glide there and back along
+  // a smooth path. They move by velocity; update() adds a raft's speed to
+  // Ozo's while he stands on it, so he rides along.
+  createMovers() {
+    this.movers = this.physics.add.group({ allowGravity: false })
+    const height = SPRITES.raft.length * PX, tint = this.level.theme?.groundTint ?? 0xffffff
+    for (const [x, y, width, dx, dy, period] of this.level.movers ?? []) {
+      const raft = this.add.rectangle(x + width / 2, y + height / 2, width, height, 0, 0)
+      this.movers.add(raft)
+      raft.body.setAllowGravity(false).setImmovable(true)
+      raft.oneWay = true
+      raft.path = { x: x + width / 2, y: y + height / 2, dx, dy, period }
+      raft.look = this.add.tileSprite(x, y, width, height, 'raft').setOrigin(0).setTileScale(PX).setDepth(10).setTint(tint)
+    }
+  }
+
+  // The raft Ozo is standing on, if any.
+  raftUnder() {
+    const hero = this.hero.body
+    if (!hero.touching.down) return null
+    return this.movers.getChildren().find(r => Math.abs(hero.bottom - r.body.top) <= 3 && hero.right > r.body.x && hero.x < r.body.right) ?? null
+  }
+
+  // Where a raft should be at a moment of play time: easing there and back.
+  moverAt(raft, time) {
+    const { x, y, dx, dy, period } = raft.path, along = (1 - Math.cos(2 * Math.PI * time / period)) / 2
+    return { x: x + dx * along, y: y + dy * along }
+  }
+
+  // Each frame: aim each raft's velocity at where it should be next frame
+  // (self-correcting, so it never drifts), and keep its planks on it.
+  moveMovers(delta) {
+    const seconds = Math.max(delta, 1) / 1000
+    for (const raft of this.movers.getChildren()) {
+      const next = this.moverAt(raft, this.playTime + delta)
+      raft.body.setVelocity((next.x - raft.body.center.x) / seconds, (next.y - raft.body.center.y) / seconds)
+      raft.look.setPosition(raft.body.x, raft.body.y)
+    }
+  }
+
+  // The key to a locked door: floating, bobbing and sparkling until Ozo touches it.
+  createKey() {
+    if (!this.level.key || this.hasKey) return
+    const [x, y] = this.level.key
+    this.keyItem = this.physics.add.image(x, y, 'key').setScale(PX).setDepth(24)
+    this.keyItem.body.setAllowGravity(false)
+    this.tweens.add({ targets: this.keyItem, y: y - 8, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' })
+    this.time.addEvent({ delay: 650, loop: true, callback: () => { if (this.keyItem?.active) this.burst(this.keyItem.x + between(-20, 20), this.keyItem.y + between(-10, 10), 1, 0xfff7b0, 0.3) } })
+  }
+
+  takeKey() {
+    if (this.hasKey || state.mode !== 'playing') return
+    this.hasKey = true
+    this.burst(this.keyItem.x, this.keyItem.y, 14, 0xffd23f, 0.9)
+    this.keyItem.destroy()
+    sound('key')
+    emit('key', true)
+    emit('toast', 'You got the key! Take it to the door.')
+    emit('objective', this.objective())
+  }
+
+  // A locked door at the bottom of a tree trunk that reaches up past the top
+  // of the screen, so there's no way over it. The door opens when Ozo reaches
+  // it carrying the key; the trunk above the doorway stays solid.
+  createDoor() {
+    const door = this.level.door
+    if (!door) return
+    const floor = this.level.floor, doorHeight = SPRITES.door.length * PX, top = -300
+    const trunkLeft = door.x - TRUNK_WIDTH / 2
+    this.add.tileSprite(trunkLeft, top, TRUNK_WIDTH, floor - top, 'bark').setOrigin(0).setTileScale(PX).setDepth(13)
+    this.add.rectangle(door.x, floor, SPRITES.door[0].length * PX, doorHeight, 0x1a110b).setOrigin(0.5, 1).setDepth(13.5) // the dark doorway behind
+    this.doorImage = this.add.image(door.x, floor, 'door').setOrigin(0.5, 1).setScale(PX).setDepth(14)
+    this.trunkCollider = this.add.rectangle(door.x, (top + floor - doorHeight) / 2, TRUNK_WIDTH, floor - doorHeight - top, 0, 0)
+    this.doorCollider = this.add.rectangle(door.x, floor - doorHeight / 2, TRUNK_WIDTH, doorHeight, 0, 0)
+    this.physics.add.existing(this.trunkCollider, true)
+    this.physics.add.existing(this.doorCollider, true)
+    if (this.doorOpen) { this.doorCollider.body.enable = false; this.doorImage.setVisible(false) }
+  }
+
+  // Called while Ozo is right by the closed door.
+  tryDoor() {
+    if (this.hasKey) return this.openDoor()
+    if (this.playTime - this.lockedToastAt < 3000) return
+    this.lockedToastAt = this.playTime
+    sound('locked')
+    emit('toast', 'Locked! Find the key.')
+  }
+
+  openDoor() {
+    this.doorOpen = true
+    this.doorCollider.body.enable = false
+    // It swings open: squashes to its hinge side and fades.
+    this.doorImage.setOrigin(0, 1).setX(this.doorImage.x - this.doorImage.displayWidth / 2)
+    this.tweens.add({ targets: this.doorImage, scaleX: 0.4, alpha: 0, duration: 500, ease: 'Quad.easeIn', onComplete: () => this.doorImage.setVisible(false) })
+    this.burst(this.level.door.x, this.level.floor - 70, 16, 0xffd23f, 1.1)
+    this.floatText(this.level.door.x, this.level.floor - 170, 'DOOR OPEN!')
+    sound('door')
+    emit('key', false) // used up
+    emit('toast', 'The door opens! Keep heading right.')
+    emit('objective', this.objective())
+  }
+
   createCheckpoint(reached = false) {
     this.checkpointReached = reached
     if (!this.level.checkpoint) return
@@ -269,7 +440,7 @@ export class LevelScene extends Phaser.Scene {
 
   reachCheckpoint() {
     this.checkpointReached = true
-    state.checkpoint = { playTime: this.playTime, coins: state.run.coins, research: state.run.research, defeated: state.run.defeated, wallBroken: this.wallBroken }
+    state.checkpoint = { playTime: this.playTime, coins: state.run.coins, research: state.run.research, defeated: state.run.defeated, wallBroken: this.wallBroken, hasKey: this.hasKey, doorOpen: this.doorOpen }
     this.flag.setTexture('flag-up')
     this.burst(this.flag.x + 16, this.flag.y - 80, 10, 0xef4f6a)
     sound('heal')
@@ -322,7 +493,12 @@ export class LevelScene extends Phaser.Scene {
     this.enemies.add(enemy)
     feetBody(enemy, 53, 63)
     const health = ENEMIES[type].health
-    Object.assign(enemy, { kind: type, hp: health, maxHp: health, patrolMin: min, patrolMax: max, direction: -1, fireAt: this.playTime + 1300 + x % 700, warning: false, stunnedUntil: 0, onPlatform: y !== this.level.floor, healthBarUntil: 0 })
+    Object.assign(enemy, {
+      kind: type, hp: health, maxHp: health, patrolMin: min, patrolMax: max, direction: -1,
+      fireAt: this.playTime + 1300 + x % 700, warning: false, stunnedUntil: 0, onPlatform: y !== this.level.floor, healthBarUntil: 0,
+      hopAt: 0, airborne: false, crouchUntil: 0, // Hatters
+      phase: 'open', phaseUntil: this.playTime + (ENEMIES.spiky?.openTime ?? 0), // Spikies
+    })
     enemy.healthBar = this.add.graphics().setDepth(25).setVisible(false) // only shown for a moment after each hit
     enemy.alert = this.add.image(x, 0, 'alert').setScale(PX).setDepth(25).setVisible(false)
     this.drawEnemyHealth(enemy)
@@ -359,9 +535,9 @@ export class LevelScene extends Phaser.Scene {
     loot.destroy()
   }
 
-  // Used by the blaster, the spitters and the verification fixtures.
-  spawnShot(incoming, x, y, vx, vy = 0) {
-    const shot = (incoming ? this.enemyShots : this.shots).create(x, y, incoming ? 'enemy-pop' : 'pop')
+  // Used by the blaster, the spitters and spikies, and the verification fixtures.
+  spawnShot(incoming, x, y, vx, vy = 0, texture = incoming ? 'enemy-pop' : 'pop') {
+    const shot = (incoming ? this.enemyShots : this.shots).create(x, y, texture)
     if (!shot) return null
     shot.setScale(PX).setDepth(incoming ? 21 : 22).setFlipX(vx < 0)
     shot.body.setAllowGravity(false)
@@ -426,7 +602,9 @@ export class LevelScene extends Phaser.Scene {
       if (end !== null) events.push({ time: end, a: bullet, kind: 'expire', priority: -1 })
       bullet.travelled += distance
       for (const platform of this.platforms.getChildren()) addHit(bullet, platform, 'terrain')
-      if (!this.wallBroken) addHit(bullet, this.wallCollider, shots.includes(bullet) ? 'wall' : 'terrain')
+      if (this.wallCollider && !this.wallBroken) addHit(bullet, this.wallCollider, shots.includes(bullet) ? 'wall' : 'terrain')
+      if (this.trunkCollider) addHit(bullet, this.trunkCollider, 'terrain')
+      if (this.doorCollider?.body.enable) addHit(bullet, this.doorCollider, 'terrain')
     }
     // Player shots and enemy shots pass through each other.
     for (const bullet of shots) for (const enemy of this.enemies.getChildren()) if (enemy.active) addHit(bullet, enemy, 'enemy')
@@ -455,6 +633,13 @@ export class LevelScene extends Phaser.Scene {
 
   hitEnemy(bullet, enemy) {
     if (!bullet.active || !enemy.active || state.mode !== 'playing') return
+    if (enemy.kind === 'spiky' && enemy.phase === 'curled') {
+      // Curled up: the shot bounces off with a tink, doing no harm.
+      this.burst(bullet.impactX ?? bullet.x, bullet.impactY ?? bullet.y, 4, 0xffffff, 0.4)
+      bullet.destroy()
+      sound('tink')
+      return
+    }
     enemy.hp -= bullet.damage
     this.popBullet(bullet)
     this.drawEnemyHealth(enemy)
@@ -487,7 +672,7 @@ export class LevelScene extends Phaser.Scene {
     })
     this.time.delayedCall(70, () => {
       this.burst(x, y - 25, 12, 0xffffff)
-      this.burst(x, y - 35, 7, kind === 'spitter' ? 0xb07cd8 : 0x4fc47e)
+      this.burst(x, y - 35, 7, POP_COLOURS[kind] ?? 0xffffff)
       // Drops appear in a row where the enemy stood, research just above.
       for (let i = 0; i < LOOT.coinsPerEnemy; i++) this.createLoot(x + (i - (LOOT.coinsPerEnemy - 1) / 2) * 32, y - 14, 'coins')
       for (let i = 0; i < LOOT.researchPerEnemy; i++) this.createLoot(x + (i - (LOOT.researchPerEnemy - 1) / 2) * 32, y - 48, 'research')
@@ -545,7 +730,8 @@ export class LevelScene extends Phaser.Scene {
     this.physics.pause()
     this.glider.setVisible(false)
     state.run.seconds = Math.round(this.playTime / 1000)
-    if (!state.profile.best || state.run.seconds < state.profile.best) state.profile.best = state.run.seconds
+    const best = state.profile.best[this.level.id]
+    if (state.run.seconds > 0 && (!best || state.run.seconds < best)) state.profile.best[this.level.id] = state.run.seconds
     bankRun() // adds this run's loot to the saved totals
     const earned = { home: true, critters: state.run.defeated >= state.run.enemies, quick: state.run.seconds < this.level.starTime }
     state.run.stars = { earned, fresh: awardStars(this.level.id, earned) }
@@ -599,6 +785,7 @@ export class LevelScene extends Phaser.Scene {
     if (!this.hero || state.mode !== 'playing') return
     const L = this.level
     this.playTime += Math.min(delta, 50)
+    this.moveMovers(Math.min(delta, 50))
     const now = this.playTime, input = state.input, body = this.hero.body
     const grounded = body.blocked.down || body.touching.down
     if (grounded) this.lastGround = now
@@ -621,16 +808,19 @@ export class LevelScene extends Phaser.Scene {
       if (this.loadout.dash && now >= this.dashReady) { this.dashUntil = now + PLAYER.dashTime; this.dashReady = now + PLAYER.dashCooldown; sound('dash') }
     }
     const dashing = now < this.dashUntil
+    // Standing on a raft carries Ozo along with it, on top of his own running.
+    const carry = this.raftUnder()?.body.velocity.x ?? 0
     if (dashing) {
       body.setVelocity(this.facing * PLAYER.dashSpeed, 0)
       if (Math.floor(now / 40) !== this.lastDashTrail) { this.lastDashTrail = Math.floor(now / 40); this.burst(this.hero.x - this.facing * 20, this.hero.y - 25, 2, 0x8ff7d2) }
-    } else if (!(now < this.knockUntil)) body.setVelocityX(direction * (this.loadout.speed ? PLAYER.happyFeetRunSpeed : PLAYER.runSpeed))
+    } else if (!(now < this.knockUntil)) body.setVelocityX(direction * (this.loadout.speed ? PLAYER.happyFeetRunSpeed : PLAYER.runSpeed) + carry)
     const gliding = this.loadout.glide && input.jump && !grounded && body.velocity.y > 0 && !dashing
     if (gliding) body.setVelocityY(Math.min(body.velocity.y, PLAYER.glideFallSpeed))
     this.glider.setVisible(gliding).setPosition(this.hero.x, this.hero.y - 80)
     this.hero.setFlipX(this.facing < 0)
-    const moving = grounded && Math.abs(body.velocity.x) > 1 && !body.blocked.left && !body.blocked.right
-    if (moving) this.runStride += Math.abs(body.velocity.x) * Math.min(delta, 50) / 1000
+    const running = Math.abs(body.velocity.x - carry) // his own speed, not the raft's
+    const moving = grounded && running > 1 && !body.blocked.left && !body.blocked.right
+    if (moving) this.runStride += running * Math.min(delta, 50) / 1000
     const pose = !grounded ? 'ozo-jump' : moving ? `ozo-run-${Math.floor(this.runStride / 16) % 4}` : 'ozo-idle'
     if (this.hero.texture.key !== pose) this.hero.setTexture(pose, undefined, false, false)
     this.hero.setAlpha(now < this.hurtUntil ? (Math.floor(now / 90) % 2 ? 0.35 : 1) : 1)
@@ -646,6 +836,8 @@ export class LevelScene extends Phaser.Scene {
       enemy.alert.setPosition(enemy.x, enemy.y - 104)
       const dx = this.hero.x - enemy.x
       if (enemy.kind === 'snapper') this.updateSnapper(enemy, dx)
+      else if (enemy.kind === 'hatter') this.updateHatter(enemy, dx, now)
+      else if (enemy.kind === 'spiky') this.updateSpiky(enemy, dx, now)
       else this.updateSpitter(enemy, dx, now)
     }
     for (const group of [this.shots, this.enemyShots]) for (const bullet of [...group.getChildren()]) {
@@ -664,10 +856,11 @@ export class LevelScene extends Phaser.Scene {
     if (Math.floor(now / 200) !== this.lastHudTick) {
       this.lastHudTick = Math.floor(now / 200)
       emit('progress', clamp((this.hero.x - L.start) / (L.exit - L.start), 0, 1))
-      const pastWall = this.hero.x > L.wall.x + L.wall.columns * STONE_WIDTH
-      if (!this.wallBroken) emit('objective', pastWall ? 'Over the wall! Head home!' : this.hero.x > L.wall.hintFrom ? 'Keep shooting to break the wall' : 'Find the crumbling wall')
+      emit('objective', this.objective())
     }
     if (!this.checkpointReached && L.checkpoint && this.hero.x >= L.checkpoint) this.reachCheckpoint()
+    // Right by a closed door: it opens if Ozo has the key, or says it's locked.
+    if (L.door && !this.doorOpen && Math.abs(this.hero.x - L.door.x) < TRUNK_WIDTH / 2 + PLAYER.bodyWidth / 2 + 6) this.tryDoor()
     // Reaching the birdhouse finishes the level, however Ozo got there (even
     // over the wall with upgrades) and even landing from above: his feet only
     // need to come down near the roof.
@@ -709,6 +902,53 @@ export class LevelScene extends Phaser.Scene {
       const x = enemy.x + Math.sign(dx) * 24, y = enemy.y - 33
       const aimX = this.hero.x - x, aimY = this.hero.y - 37 - y, distance = Math.hypot(aimX, aimY) || 1
       this.spawnShot(true, x, y, aimX / distance * t.shotSpeed, aimY / distance * t.shotSpeed)
+    }
+  }
+
+  // Hatter: when Ozo is near it crouches (with a "!"), then hops towards him,
+  // over and over. Hops never leave its patrol area: if one would, it hops on
+  // the spot. In the air it tilts and is too high for Ozo's shots.
+  updateHatter(enemy, dx, now) {
+    const t = ENEMIES.hatter, body = enemy.body
+    enemy.setFlipX(dx < 0)
+    if (!(body.blocked.down || body.touching.down)) return // mid-hop: keep flying
+    if (enemy.airborne) { enemy.airborne = false; enemy.hopAt = now + t.hopEvery; enemy.setAngle(0) } // just landed
+    body.setVelocityX(0)
+    if (Math.abs(dx) > t.noticeRange || now < enemy.hopAt) { enemy.alert.setVisible(false); enemy.crouchUntil = 0; return }
+    if (!enemy.crouchUntil) { enemy.crouchUntil = now + t.squashTime; enemy.alert.setVisible(true); return }
+    if (now < enemy.crouchUntil) return
+    enemy.crouchUntil = 0
+    enemy.alert.setVisible(false)
+    const direction = Math.sign(dx) || 1
+    const reach = t.hopSpeed * 2 * t.hopVelocity / WORLD.gravity // how far one hop goes
+    const staysIn = enemy.x + direction * reach >= enemy.patrolMin && enemy.x + direction * reach <= enemy.patrolMax
+    body.setVelocity(staysIn ? direction * t.hopSpeed : 0, -t.hopVelocity)
+    enemy.setAngle(direction * 10)
+    enemy.airborne = true
+  }
+
+  // Spiky: open (can be hit) -> glowing warning -> fires a spread of burrs at
+  // Ozo -> curled up (shots bounce off) -> open again. It only starts the
+  // warning when Ozo is in range, so from far away it just waits, open.
+  updateSpiky(enemy, dx, now) {
+    const t = ENEMIES.spiky
+    enemy.setFlipX(dx < 0)
+    if (now < enemy.phaseUntil) return
+    if (enemy.phase === 'open' && Math.abs(dx) < t.fireRange) {
+      enemy.phase = 'charge'; enemy.phaseUntil = now + t.windUp
+      enemy.setTexture('spiky-charge'); enemy.alert.setVisible(true)
+    } else if (enemy.phase === 'charge') {
+      const x = enemy.x + Math.sign(dx) * 20, y = enemy.y - 36
+      const aim = Math.atan2(this.hero.y - 37 - y, this.hero.x - x)
+      for (let i = 0; i < t.burrs; i++) {
+        const angle = aim + (i - (t.burrs - 1) / 2) * t.spread
+        this.spawnShot(true, x, y, Math.cos(angle) * t.shotSpeed, Math.sin(angle) * t.shotSpeed, 'burr')
+      }
+      enemy.phase = 'curled'; enemy.phaseUntil = now + t.curledTime
+      enemy.setTexture('spiky-curled'); enemy.alert.setVisible(false)
+    } else if (enemy.phase === 'curled') {
+      enemy.phase = 'open'; enemy.phaseUntil = now + t.openTime
+      enemy.setTexture('spiky')
     }
   }
 }

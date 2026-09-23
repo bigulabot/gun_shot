@@ -115,6 +115,13 @@ test('stars are earned one at a time, kept, and survive a new session', async ()
   assert.equal(broken.starCount('01'), 0, 'reset clears stars')
 })
 
+test('best times are kept per level, and an old single best time becomes level 01\'s', async () => {
+  const old = await session(JSON.stringify({ best: 64 }))
+  assert.deepEqual(old.state.profile.best, { '01': 64 })
+  const mixed = await session(JSON.stringify({ best: { '01': 60, '02': 95, '03': -4, nonsense: 10 } }))
+  assert.deepEqual(mixed.state.profile.best, { '01': 60, '02': 95 })
+})
+
 test('reset save returns everything to a fresh start but keeps the sound setting', async () => {
   const api = await session(JSON.stringify({ coins: 40, research: 20, upgrades: { twin: true, jump: true }, equipped: 'twin', sound: false, best: 42 }))
   api.resetProfile()
@@ -122,7 +129,7 @@ test('reset save returns everything to a fresh start but keeps the sound setting
   assert.equal(api.state.profile.research, 0)
   assert.equal(Object.values(api.state.profile.upgrades).some(Boolean), false)
   assert.equal(api.state.profile.equipped, 'pop')
-  assert.equal(api.state.profile.best, null)
+  assert.deepEqual(api.state.profile.best, {})
   assert.equal(api.state.profile.sound, false)
   assert.equal(JSON.parse(api.saved()).coins, 0)
 })

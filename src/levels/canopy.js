@@ -15,6 +15,11 @@ export default {
   floor: 575, // top of the ground
   start: 170, // Ozo's starting x
   starTime: 75, // seconds: finish faster than this for the "quick" star
+  // Behind the main menu the camera drifts between these x positions: the
+  // menu's big Ozo must always have ground under him, never a pit.
+  menuPan: [1100, 2100],
+  // Look and sound: sky colour, birds, which music plays.
+  theme: { sky: '#9ad8f0', birds: true, music: 'jungle' },
 
   // Solid ground: [x, width]. The spaces between them are pits.
   ground: [[0, 1900], [2000, 1200], [3320, 780], [4220, 980], [5330, 1240]],
@@ -38,7 +43,7 @@ export default {
     [2650, 'snapper', 2500, 2800], [3600, 'spitter', 3600, 3600],
     [3900, 'snapper', 3750, 4000], [5000, 'spitter', 5000, 5000],
     [5530, 'snapper', 5430, 5630], [6000, 'spitter', 6000, 6000],
-    [6185, 'snapper', 6140, 6230, 320], // up high: needed for the "every critter" star
+    [6185, 'snapper', 6150, 6220, 320], // up high: needed for the "every critter" star
   ],
 
   // Big clouds drawn in front of pickups: [centre x, centre y, width, height].

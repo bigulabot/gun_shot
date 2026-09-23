@@ -189,6 +189,14 @@ export const SPRITES = {
     '.uWu.',
     '..u..',
   ],
+  // A Spiky's burr: fired three at a time in a spread.
+  burr: [
+    '.D.D.',
+    'DXHXD',
+    '.HHH.',
+    'DXHXD',
+    '.D.D.',
+  ],
   'enemy-pop': [
     '.sss.',
     'sSSss',
@@ -268,6 +276,71 @@ export const SPRITES = {
     'TTTDTTDTTTTE',
     'TEEDEEEEEEEE',
     'DDDDDDDDDDDD',
+  ],
+  // Rainy Ridge's moving raft: a mossy plank, repeated along its width.
+  raft: [
+    'VvVvvVvV',
+    'jjjjjjjj',
+    'fFffffFf',
+    'ffffffff',
+    'FFFFFFFF',
+    '.F....F.',
+  ],
+  // The key that opens Rainy Ridge's door.
+  key: [
+    '.yyy.........',
+    'yuuyy........',
+    'yu.uyyyyyyyyy',
+    'yy.yyCCCCyCyC',
+    '.yyyC....y.y.',
+    '..CC.....C.C.',
+  ],
+  // The locked door: planks, two iron bands and a gold keyhole. It fills the
+  // doorway at the bottom of a tree trunk too tall to jump over.
+  door: [
+    'FffFffFffFffFffF',
+    'FffFffFffFffFffF',
+    'FffFffFffFffFffF',
+    'FffFffFffFffFffF',
+    'FffFffFffFffFffF',
+    'GGGGGGGGGGGGGGGG',
+    'GgGGGGGGGGGGGGgG',
+    'FffFffFffFffFffF',
+    'FffFffFffFffFffF',
+    'FffFffFffFffFffF',
+    'FffFffFffFffFffF',
+    'FffFffFffFffFffF',
+    'FffFffFffFffFffF',
+    'FffFfyyyyyyfFffF',
+    'FffFfyykkyyfFffF',
+    'FffFfyykkyyfFffF',
+    'FffFfyyykyyfFffF',
+    'FffFfyyykyyfFffF',
+    'FffFfyyyyyyfFffF',
+    'FffFfCCCCCCfFffF',
+    'FffFffFffFffFffF',
+    'FffFffFffFffFffF',
+    'FffFffFffFffFffF',
+    'FffFffFffFffFffF',
+    'FffFffFffFffFffF',
+    'GGGGGGGGGGGGGGGG',
+    'GgGGGGGGGGGGGGgG',
+    'FffFffFffFffFffF',
+    'FffFffFffFffFffF',
+    'FffFffFffFffFffF',
+    'FffFffFffFffFffF',
+    'FffFffFffFffFffF',
+  ],
+  // Tree-trunk bark around the door, repeated up to the sky.
+  bark: [
+    'DFDDDXDDDFDDDXDD',
+    'DFDDDXDDDFDDDXDD',
+    'DFDDXXDDDFDDXXDD',
+    'DDFDXDDDDDFDXDDD',
+    'DDFDXDDDDDFDXDDD',
+    'DDFDDXDDDDFDDXDD',
+    'DFDDDXDDDFDDDXDD',
+    'DFDDDXDDDFDDDXDD',
   ],
   // Checkpoint flag: grey and low until Ozo reaches it, then raised.
   'flag-down': [
@@ -509,9 +582,10 @@ export const SPRITES = {
     '.MDD...DD...',
   ],
 
-  // Finlay's enemy drawings, not in any level yet. Same 4 px art pixels as
-  // the Snapper and Spitter. Previews: art/finlay-enemies/.
-  // An egg on little boots, in a floppy swirly hat, with a round "O" mouth.
+  // Finlay's enemy drawings, first met in Rainy Ridge. Same 4 px art pixels
+  // as the Snapper and Spitter. Previews: art/finlay-enemies/.
+  // Hatter: an egg on little boots, in a floppy swirly hat, with a round "O"
+  // mouth. It hops towards Ozo.
   hatter: [
     '...rrrr.......',
     '..rryrrrr.....',
@@ -536,8 +610,9 @@ export const SPRITES = {
     '.....F..F.....',
     '...FFF..FFF...',
   ],
-  // A round spiky ball: a crown of big spikes, little spikes round the sides,
-  // big eyes, a flat mouth and skinny legs.
+  // Spiky: a round spiky ball with a crown of big spikes, little spikes round
+  // the sides, big eyes, a flat mouth and skinny legs. It fires burrs, then
+  // curls up (below) so shots bounce off.
   spiky: [
     '..........D.....',
     '.........DX.....',
@@ -560,6 +635,31 @@ export const SPRITES = {
     '......F..F......',
     '......F..F......',
     '.....FF..FFF....',
+  ],
+  // Spiky curled up: legs tucked, eyes shut, spikes all round. Same size as
+  // 'spiky', so its collision box doesn't change.
+  'spiky-curled': [
+    '................',
+    '................',
+    '................',
+    '..........D.....',
+    '.........DX.....',
+    '......D..DXX....',
+    '......DX.DXX....',
+    '...D..DX.DXX..D.',
+    '...DX.DXXDXXX.DX',
+    '...DX.DXXDXXXDX.',
+    '...DXDXXXDXXXX..',
+    '...CllllllllC...',
+    'DXCllllllllllCXD',
+    '..ClkkkllkkklC..',
+    'DXCllllllllllCXD',
+    '..CllllllllllC..',
+    'DXCllllllllllCXD',
+    '..DCllllllllCD..',
+    '.DX.CCllllCC.XD.',
+    '..D.DCCCCCCD.D..',
+    '...D.D.DD.D.D...',
   ],
 
   // Finlay's bosses, not in any level yet. Previews: art/finlay-bosses/.
@@ -692,3 +792,6 @@ export const SPRITES = {
     '..gggggg..gggggg..',
   ],
 }
+
+// Spiky about to fire: the same sprite with its spikes glowing red.
+SPRITES['spiky-charge'] = SPRITES.spiky.map(row => row.replace(/X/g, 'H').replace(/D/g, 'R'))

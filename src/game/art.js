@@ -25,9 +25,12 @@ export function createArt(scene) {
   }
 }
 
-let portrait
-// A small image of Ozo for the title screen, scaled up crisply by CSS.
-export function portraitURL() {
-  portrait ??= drawSprite(SPRITES['ozo-idle'], 8).toDataURL()
-  return portrait
+// Any sprite as an image for the page (menus, HUD), scaled up crisply by CSS.
+const images = new Map()
+export function spriteURL(name, scale = 8) {
+  const id = `${name}@${scale}`
+  if (!images.has(id)) images.set(id, drawSprite(SPRITES[name], scale).toDataURL())
+  return images.get(id)
 }
+// A small image of Ozo for the title screen.
+export const portraitURL = () => spriteURL('ozo-idle', 8)

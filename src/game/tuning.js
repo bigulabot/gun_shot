@@ -39,11 +39,9 @@ export const PLAYER = {
 export const CAMERA = {
   lookAhead: 120, // how far the camera looks ahead of Ozo, in the direction he faces
   turnTime: 550, // how quickly it swings round when he turns (higher = slower)
-  // Behind the main menu the level drifts between these camera positions and
-  // back. Chosen so the menu's big Ozo always has ground under him, not a pit.
-  menuPanFrom: 1100,
-  menuPanTo: 2100,
-  menuPanTime: 40000, // ms each way
+  // Behind the main menu the level drifts along and back (each level sets
+  // where, in its `menuPan`), taking this long each way.
+  menuPanTime: 40000,
 }
 
 export const BLASTER = {
@@ -74,6 +72,28 @@ export const ENEMIES = {
     reload: 2150,
     shotSpeed: 185,
     shotRange: 600,
+  },
+  // Finlay's Hatter: hops towards Ozo. In the air it's above his shots, so
+  // he has to hit it when it lands.
+  hatter: {
+    health: 3,
+    noticeRange: 380, // starts hopping towards Ozo inside this distance
+    hopEvery: 1300, // ms between hops (counted from each landing)
+    squashTime: 220, // it crouches this long before each hop (a warning)
+    hopSpeed: 150, // sideways speed during a hop (about 100 px per hop)
+    hopVelocity: 520, // upward speed: hops about 85 px high
+  },
+  // Finlay's Spiky: stays put. Open (can be hit) -> glows (warning) -> fires
+  // a spread of burrs -> curls up (shots bounce off) -> open again.
+  spiky: {
+    health: 4,
+    fireRange: 470, // only fires when Ozo is this close (horizontally)
+    openTime: 1500, // vulnerable, before it starts to glow
+    windUp: 650, // glowing warning before the burrs
+    curledTime: 1700, // curled up, shots bounce off
+    burrs: 3,
+    spread: 0.38, // radians between neighbouring burrs
+    shotSpeed: 200,
   },
 }
 

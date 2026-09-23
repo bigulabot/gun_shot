@@ -44,27 +44,53 @@ export function sound(name, streak = 0) {
   if (name === 'heal') [523, 659, 988].forEach((f, i) => note(f, 0.16, 'sine', 0.05, i * 0.07))
   if (name === 'win' || name === 'switch' || name === 'buy') [523, 659, 784, 1047].forEach((f, i) => note(f, 0.24, 'sine', 0.055, i * 0.09))
   if (name === 'star') [784, 1047, 1319].forEach((f, i) => note(f, 0.2, 'sine', 0.05, i * 0.06))
+  if (name === 'key') [1319, 1568, 2093, 2637].forEach((f, i) => note(f, 0.18, 'sine', 0.045, i * 0.07))
+  if (name === 'door') { note(110, 0.5, 'triangle', 0.08, 0, 70); [392, 523, 659].forEach((f, i) => note(f, 0.22, 'sine', 0.05, 0.25 + i * 0.08)) }
+  if (name === 'locked') { note(220, 0.08, 'square', 0.03); note(196, 0.12, 'square', 0.03, 0.09) }
+  if (name === 'tink') note(1900, 0.06, 'square', 0.02, 0, 1400)
 }
 
-// Background music: a cheerful chiptune loop, written out below as notes and
-// played with the same simple oscillators as the sound effects. 16 bars of
+// Background music: chiptune loops written out below as notes and played with
+// the same simple oscillators as the sound effects. Each song is 16 bars of
 // eighth notes: each bar has 8 slots; "-" holds the note before, "." rests.
-const TEMPO = 112 // beats per minute
-const STEP = 60 / TEMPO / 2 // seconds per eighth note
-const CHORDS = 'C Am F G  C Am F G  F G Em Am  F G C C'.split(/\s+/)
-const MELODY = [
-  'E5 - G5 - C6 - G5 E5', 'A5 - G5 E5 D5 - C5 -', 'A4 - C5 - D5 - C5 D5', 'D5 - - - G4 . . .',
-  'E5 - G5 - C6 - D6 -', 'E6 - D6 C6 A5 - G5 -', 'A5 - G5 E5 D5 - C5 D5', 'D5 - - - . . . .',
-  'C6 - A5 - F5 - A5 -', 'B5 - G5 - D5 - G5 -', 'E5 - G5 - B5 - G5 -', 'A5 - - - E5 - C5 -',
-  'A5 - G5 - F5 - E5 -', 'D5 - E5 - G5 - B5 -', 'C6 - - - G5 - E5 -', 'C5 - - - . . . .',
-].join(' ').split(/\s+/)
-const ROOTS = { C: 48, Am: 45, F: 41, G: 43, Em: 40 } // bass notes, as MIDI numbers
+// Each level picks its song in its theme.
+const song = (tempo, chords, bars, lead, drums) => ({
+  step: 60 / tempo / 2, // seconds per eighth note
+  chords: chords.split(/\s+/),
+  melody: bars.join(' ').split(/\s+/),
+  lead, drums,
+})
+const SONGS = {
+  // Canopy Coast: cheerful, in C major.
+  jungle: song(112, 'C Am F G  C Am F G  F G Em Am  F G C C', [
+    'E5 - G5 - C6 - G5 E5', 'A5 - G5 E5 D5 - C5 -', 'A4 - C5 - D5 - C5 D5', 'D5 - - - G4 . . .',
+    'E5 - G5 - C6 - D6 -', 'E6 - D6 C6 A5 - G5 -', 'A5 - G5 E5 D5 - C5 D5', 'D5 - - - . . . .',
+    'C6 - A5 - F5 - A5 -', 'B5 - G5 - D5 - G5 -', 'E5 - G5 - B5 - G5 -', 'A5 - - - E5 - C5 -',
+    'A5 - G5 - F5 - E5 -', 'D5 - E5 - G5 - B5 -', 'C6 - - - G5 - E5 -', 'C5 - - - . . . .',
+  ], 'square', 'full'),
+  // Rainy Ridge: slower and gentler, in A minor, soft drums.
+  rain: song(96, 'Am F C G  Am F G E  F G Am Am  F G Am Am', [
+    'A4 - C5 - E5 - D5 C5', 'C5 - A4 - - - G4 -', 'E5 - G5 - E5 D5 C5 -', 'D5 - - - . . . .',
+    'A4 - C5 - E5 - A5 -', 'G5 - E5 - D5 - C5 -', 'D5 - E5 - G5 - E5 D5', 'E5 - - - . . B4 -',
+    'C5 - - - A4 - C5 -', 'D5 - - - B4 - D5 -', 'E5 - D5 C5 A4 - C5 -', 'A4 - - - . . . .',
+    'A5 - G5 - E5 - C5 -', 'D5 - E5 - G5 - - -', 'E5 - D5 - C5 - B4 -', 'A4 - - - . . . .',
+  ], 'triangle', 'soft'),
+}
+const ROOTS = { C: 48, Am: 45, F: 41, G: 43, Em: 40, E: 40 } // bass notes, as MIDI numbers
 const LETTERS = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }
 const frequency = midi => 440 * 2 ** ((midi - 69) / 12)
 const midiOf = name => 12 * (Number(name.slice(-1)) + 1) + LETTERS[name[0]]
 const MUSIC_VOLUME = { full: 0.55, quiet: 0.2 }
 
-let musicGain, musicTimer, nextStep = 0, nextTime = 0, mood = 'full'
+let musicGain, musicTimer, nextStep = 0, nextTime = 0, mood = 'full', current = SONGS.jungle
+
+// Switches to another song (from the start of it), e.g. for a new level.
+export function setMusicSong(name) {
+  const next = SONGS[name] ?? SONGS.jungle
+  if (next === current) return
+  current = next
+  nextStep = 0
+}
 
 function startMusic() {
   if (musicTimer || !context) return
@@ -87,26 +113,27 @@ function scheduleMusic() {
   if (context.state !== 'running') return
   if (nextTime < context.currentTime) nextTime = context.currentTime + 0.05 // fell behind: skip ahead
   while (nextTime < context.currentTime + 0.2) {
-    if (state.profile.sound) playStep(nextStep, nextTime)
-    nextTime += STEP
-    nextStep = (nextStep + 1) % MELODY.length
+    if (state.profile.sound) playStep(current, nextStep, nextTime)
+    nextTime += current.step
+    nextStep = (nextStep + 1) % current.melody.length
   }
 }
 
-function playStep(step, time) {
-  const token = MELODY[step]
+function playStep({ step: STEP, chords, melody, lead, drums }, step, time) {
+  const token = melody[step]
   if (token !== '-' && token !== '.') {
     let length = 1
-    while (MELODY[(step + length) % MELODY.length] === '-') length++
-    tone(frequency(midiOf(token)), time, length * STEP * 0.95, 'square', 0.022, undefined, musicGain)
+    while (melody[(step + length) % melody.length] === '-') length++
+    tone(frequency(midiOf(token)), time, length * STEP * 0.95, lead, lead === 'square' ? 0.022 : 0.05, undefined, musicGain)
   }
   // Bouncy bass: the chord's root, jumping up an octave on every other beat.
   const beat = step % 8
-  if (beat % 2 === 0) tone(frequency(ROOTS[CHORDS[Math.floor(step / 8)]] + (beat % 4 ? 12 : 0)), time, STEP * 1.7, 'triangle', 0.07, undefined, musicGain)
-  // Soft drums: kick on beats 1 and 3, a snap on 2 and 4, a tick on the off-beats.
-  if (beat === 0 || beat === 4) tone(140, time, 0.12, 'sine', 0.09, 45, musicGain)
-  if (beat === 2 || beat === 6) hiss(time, 0.09, 0.03, 1800)
-  if (beat % 2) hiss(time, 0.03, 0.012, 7000)
+  if (beat % 2 === 0) tone(frequency(ROOTS[chords[Math.floor(step / 8)]] + (beat % 4 ? 12 : 0)), time, STEP * 1.7, 'triangle', 0.07, undefined, musicGain)
+  // Drums: kick on beats 1 and 3, a snap on 2 and 4, a tick on the off-beats.
+  // "Soft" drums are just a gentle kick and the ticks, like rain.
+  if (beat === 0 || (beat === 4 && drums === 'full')) tone(140, time, 0.12, 'sine', drums === 'full' ? 0.09 : 0.06, 45, musicGain)
+  if ((beat === 2 || beat === 6) && drums === 'full') hiss(time, 0.09, 0.03, 1800)
+  if (beat % 2) hiss(time, 0.03, drums === 'full' ? 0.012 : 0.009, 7000)
 }
 
 function hiss(time, duration, volume, cutoff) {

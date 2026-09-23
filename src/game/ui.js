@@ -1,6 +1,12 @@
 import { events, state, upgrades, purchase, saveProfile, setMode, resetInput, wallet, resetProfile, STARS, starCount } from './state.js'
-import { sound, unlockAudio, suspendAudio, setMusicMood } from './audio.js'
+import { sound, unlockAudio, suspendAudio, setMusicMood, setMusicSong } from './audio.js'
 import { PLAYER } from './tuning.js'
+import { LEVELS } from '../levels/index.js'
+import { spriteURL } from './art.js'
+
+// A level can be played once the one before it has been finished.
+const unlocked = index => index === 0 || Boolean(state.profile.stars[LEVELS[index - 1].id]?.home)
+const starText = id => '★'.repeat(starCount(id)) + '☆'.repeat(3 - starCount(id))
 
 const paths = {
   left: '<path d="m15 5-7 7 7 7"/>', right: '<path d="m9 5 7 7-7 7"/>',
@@ -165,20 +171,38 @@ export function setupUI(getScene) {
   // drifting by behind (LevelScene). "How to play" swaps in a help page.
   function renderTitle() {
     if (titleView === 'help') return renderHelp()
-    const { research, coins, best } = state.profile
-    const stats = [research || coins ? `${currency('research')} ${research} &nbsp; ${currency('coins')} ${coins}` : '', best ? `Best time ${timeLabel(best)}` : ''].filter(Boolean).join(' &nbsp;·&nbsp; ')
+    if (titleView === 'levels') return renderLevels()
+    const { research, coins } = state.profile
+    const stars = LEVELS.reduce((sum, { id }) => sum + starCount(id), 0)
+    const stats = [research || coins ? `${currency('research')} ${research} &nbsp; ${currency('coins')} ${coins}` : '', stars ? `★ ${stars} of ${LEVELS.length * 3}` : ''].filter(Boolean).join(' &nbsp;·&nbsp; ')
     overlay.innerHTML = `<div class="menu">
       <div class="menu-main">
         <h1 class="logo">GUN SHOT</h1>
         <p class="tagline">Ozo's first adventure</p>
         <nav class="menu-buttons" aria-label="Main menu">
-          <button class="primary" data-action="start">PLAY <small>${level.id} ${level.name} <span class="menu-stars" aria-label="${starCount(level.id)} of 3 stars">${'★'.repeat(starCount(level.id))}${'☆'.repeat(3 - starCount(level.id))}</span></small></button>
+          <button class="primary" data-action="levels">PLAY <small>${LEVELS.length} levels</small></button>
           <button data-action="shop">NEST <small>upgrades</small></button>
           <button data-action="help">HOW TO PLAY</button>
         </nav>
         ${stats ? `<p class="menu-stats">${stats}</p>` : ''}
       </div>
       ${portrait ? `<img class="menu-hero" src="${portrait}" alt="Ozo the toucan"/>` : ''}
+    </div>`
+  }
+  // Choose a level: each shows its stars and best time; later ones stay
+  // locked until the one before is finished.
+  function renderLevels() {
+    const newest = LEVELS.findLastIndex((_, i) => unlocked(i)) // highlighted: the one to play next
+    overlay.innerHTML = `<div class="panel levels" role="dialog" aria-modal="true" aria-labelledby="levels-title">
+      <h2 id="levels-title">Choose a level</h2>
+      <ul class="level-list">${LEVELS.map(({ id, name }, i) => {
+        const open = unlocked(i), best = state.profile.best[id]
+        return `<li><button data-level="${i}" class="${i === newest ? 'primary' : ''}" ${open ? '' : 'disabled'}>
+          <b>${id} ${name}</b>
+          <span>${open ? `<span class="level-stars" aria-label="${starCount(id)} of 3 stars">${starText(id)}</span>${best ? ` · best ${timeLabel(best)}` : ''}` : `🔒 Finish ${LEVELS[i - 1].id} first`}</span>
+        </button></li>`
+      }).join('')}</ul>
+      <div class="actions"><button data-action="back">BACK</button></div>
     </div>`
   }
   function showTitle(view) {
@@ -195,7 +219,7 @@ export function setupUI(getScene) {
         ${row('Shoot', 'Hold FIRE to keep shooting', 'X')}
         ${row('Pause', 'Tap the pause button at the top', 'Esc')}
       </ul>
-      <p>Break the crumbling wall and get Ozo home. Coins and research only count once you reach home, then spend them in the Nest.</p>
+      <p>Get Ozo home to his birdhouse. On the way, shoot down the crumbling wall, or find the key to the locked door. Coins and research only count once you reach home, then spend them in the Nest.</p>
       <div class="actions"><button class="primary" data-action="back">GOT IT</button></div>
     </div>`
   }
@@ -225,13 +249,20 @@ export function setupUI(getScene) {
     const checkpoint = dead && state.checkpoint
     const text = complete ? 'Ozo made it home. Your loot is saved.' : checkpoint ? 'Start again from the flag. Loot picked up after it is lost.' : dead ? 'Back to the start. Loot from this try is lost; upgrades are kept.' : 'Loot only counts once you reach home.'
     const stats = complete ? `<p class="stats">Time ${timeLabel(state.run.seconds)} · +${state.run.research} ${currency('research')} · +${state.run.coins} ${currency('coins')}</p>` : ''
+    const next = complete && nextLevel()
     overlay.innerHTML = `<div class="panel" role="dialog" aria-modal="true" aria-labelledby="result-title">
       <h2 id="result-title">${title}</h2>${complete ? starRow() : ''}${text ? `<p>${text}</p>` : ''}${stats}
       <div class="actions">${checkpoint
         ? '<button class="primary" data-action="checkpoint">FROM THE FLAG</button><button data-action="start">RESTART LEVEL</button>'
+        : next ? `<button class="primary" data-action="next">NEXT LEVEL <small>${next.id} ${next.name}</small></button><button data-action="start">PLAY AGAIN</button>`
         : `<button class="primary" data-action="${paused ? 'resume' : 'start'}">${paused ? 'RESUME' : complete ? 'PLAY AGAIN' : 'TRY AGAIN'}</button>`}
       ${paused ? '<button data-action="start">RESTART</button>' : '<button data-action="shop">NEST</button>'}<button data-action="home">MENU</button></div>
     </div>`
+  }
+  // The level after the one being played, if there is one and it's unlocked.
+  function nextLevel() {
+    const i = LEVELS.findIndex(({ id }) => id === level.id) + 1
+    return i > 0 && i < LEVELS.length && unlocked(i) ? LEVELS[i] : null
   }
   function renderShop() {
     overlay.innerHTML = `<div class="panel shop" role="dialog" aria-modal="true" aria-labelledby="shop-title">
@@ -261,8 +292,11 @@ export function setupUI(getScene) {
     unlockAudio()
     if (button.dataset.buy) { if (purchase(button.dataset.buy)) { sound('buy'); renderShop(); showToast('Yours! Ready for your next run.') }; return }
     if (button.dataset.equip) { state.profile.equipped = button.dataset.equip; saveProfile(); renderShop(); return }
+    if (button.dataset.level) { getScene().startLevel(LEVELS[Number(button.dataset.level)]); return }
     const action = button.dataset.action
     if (action === 'start') getScene().startRun()
+    if (action === 'next') getScene().startLevel(nextLevel())
+    if (action === 'levels') showTitle('levels')
     if (action === 'checkpoint') getScene().restartFromCheckpoint()
     if (action === 'resume') getScene().resumeRun()
     if (action === 'home') getScene().goHome()
@@ -281,7 +315,15 @@ export function setupUI(getScene) {
   function showToast(message) { toast.textContent = message; toast.classList.add('visible'); clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove('visible'), 3000) }
   events.addEventListener('mode', renderMode)
   events.addEventListener('ready', event => { portrait = event.detail; updateWallet(); renderMode() })
-  events.addEventListener('level', event => { level = event.detail; document.querySelector('#level-name').textContent = `${level.id} ${level.name}` })
+  events.addEventListener('level', event => {
+    level = event.detail
+    document.querySelector('#level-name').textContent = `${level.id} ${level.name}`
+    setMusicSong(level.music)
+  })
+  // A small key in the HUD while Ozo carries one.
+  const keyHeld = document.querySelector('#key-held')
+  keyHeld.src = spriteURL('key', 4)
+  events.addEventListener('key', event => { keyHeld.hidden = !event.detail })
   events.addEventListener('profile', updateWallet)
   let shownHealth = PLAYER.hearts
   events.addEventListener('health', event => {

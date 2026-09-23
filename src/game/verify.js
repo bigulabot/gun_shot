@@ -2,6 +2,7 @@ import Phaser from 'phaser'
 import { state, cleanProfile, emit, resetInput, purchase, collect } from './state.js'
 import { shotRange, WALL_HEALTH } from './combat.js'
 import { PLAYER, BLASTER, WALL, ENEMIES } from './tuning.js'
+import { LEVELS } from '../levels/index.js'
 
 // Uses the real scene, physics and input state. No teleports or invincibility on
 // the baseline route. Run manually at /?verify=1; never touches the saved profile.
@@ -13,7 +14,7 @@ export function setupVerification(game) {
   const panel = document.createElement('aside')
   panel.id = 'verification'
   panel.style.cssText = 'position:fixed;bottom:3px;left:3px;z-index:100;background:#10202c;color:#fff4cf;border:1px solid #8dbaac;padding:8px;font:11px monospace;max-width:95vw;'
-  panel.innerHTML = '<button id="verify-route">Check baseline route</button> <button id="verify-death">Check death + restart</button> <button id="verify-talents">Check talents + shop</button> <button id="verify-combat">Check combat fixes</button> <button id="verify-platforms">Check platforms + movement</button> <button id="verify-checkpoint">Check checkpoint</button><output id="verify-result" style="display:block;padding-top:4px">Ready. Test progress is not saved.</output>'
+  panel.innerHTML = LEVELS.map(({ id }) => `<button id="verify-route-${id}">Check route ${id}</button> `).join('') + '<button id="verify-death">Check death + restart</button> <button id="verify-talents">Check talents + shop</button> <button id="verify-combat">Check combat fixes</button> <button id="verify-platforms">Check platforms + movement</button> <button id="verify-checkpoint">Check checkpoint</button><output id="verify-result" style="display:block;padding-top:4px">Ready. Test progress is not saved.</output>'
   document.body.append(panel)
   const output = panel.querySelector('output')
   const scene = () => game.scene.getScene('LevelScene')
@@ -51,9 +52,9 @@ export function setupVerification(game) {
       tick(); await nextFrame()
     }
   }
-  async function fresh() {
+  async function fresh(level = LEVELS[0]) {
     const oldHero = scene().hero
-    state.profile = cleanProfile(); emit('profile'); scene().startRun()
+    state.profile = cleanProfile(); emit('profile'); scene().startLevel(level)
     await until(() => state.mode === 'playing' && scene().hero !== oldHero)
     await until(() => scene().hero.body.blocked.down)
   }
@@ -71,42 +72,109 @@ export function setupVerification(game) {
     catch (error) { output.textContent = `FAIL: ${name}. ${error.message}` }
     finally { running = false; resetInput() }
   }
-  panel.querySelector('#verify-route').onclick = () => check('baseline route (dodging pink shots), all enemies, loot, breakable wall, victory', async () => {
-    await fresh()
-    const level = scene().level, wall = level.wall
-    // Take off a little before the end of each piece of ground.
-    const jumps = level.ground.slice(0, -1).map(([x, width]) => x + width - 42)
-    let nextJump = 0
-    await until(() => state.mode === 'complete', 60000, () => {
-      const s = scene(), x = s.hero.x, body = s.hero.body
-      if (state.mode === 'dead' || state.mode === 'dying') throw new Error(`Died at x=${Math.round(x)}, health=${state.health}, next jump=${jumps[nextJump]}`)
+  // Plays a whole level from the start like a careful player, with no
+  // upgrades, teleports or invincibility: runs right, stops to shoot ground
+  // enemies ahead, jumps the gaps, hops over enemy shots, waits for a wall to
+  // fall, and crosses raft pits: waits at the edge, steps on, rides (jumping
+  // up for a key and dropping back on if there is one), and steps off.
+  async function playRoute(level) {
+    await fresh(level)
+    const s = scene(), L = s.level, wall = L.wall, floor = L.floor
+    const gaps = L.ground.slice(0, -1).map(([x, width], i) => ({ start: x + width, end: L.ground[i + 1][0] }))
+    const raftFor = gap => s.movers.getChildren().find(r => r.path.x - r.width / 2 <= gap.start + 25 && r.path.x + r.path.dx + r.width / 2 >= gap.end - 25)
+    const raftGaps = gaps.filter(raftFor)
+    // Take off a little before the end of each piece of ground, unless a raft crosses the gap.
+    const jumps = gaps.filter(gap => !raftGaps.includes(gap)).map(gap => gap.start - 42)
+    const keyLedge = L.key && L.ledges.find(([lx, , lw]) => L.key[0] >= lx && L.key[0] <= lx + lw)
+    let nextJump = 0, raftStage = null
+    await until(() => state.mode === 'complete', 120000, () => {
+      const x = s.hero.x, body = s.hero.body, grounded = body.blocked.down || body.touching.down
+      if (state.mode === 'dead' || state.mode === 'dying') throw new Error(`Died at x=${Math.round(x)}, health=${state.health}, next jump=${jumps[nextJump]}, raft stage=${raftStage}`)
       if (state.mode !== 'playing') return
+      state.input.shoot = true
+      state.input.jump = !grounded // hold jump for full-height jumps
+
+      // Crossing a raft pit takes over until Ozo is safely on the far side.
+      const gap = raftGaps.find(g => x > g.start - 140 && x < g.end + 30)
+      if (gap) {
+        const raft = raftFor(gap), left = raft.body.x, right = raft.body.right, movingRight = raft.body.velocity.x > 20
+        const onRaft = grounded && body.touching.down && x > left - 10 && x < right + 10
+        const onLedge = grounded && keyLedge && s.hero.y < floor - 50
+        const needKey = keyLedge && !s.hasKey
+        const go = right => { state.input.right = right; state.input.left = false }
+        raftStage ??= 'waiting'
+        if (raftStage === 'waiting') {
+          // Walk to the edge, then wait for the raft to come right up to it.
+          go(x < gap.start - 40)
+          if (x >= gap.start - 40 && left <= gap.start + 10) raftStage = 'boarding'
+        } else if (raftStage === 'boarding') {
+          go(x < left + 50) // on, then stand still and let it carry him
+          if (onRaft && x >= left + 50) raftStage = needKey ? 'toKey' : 'riding'
+        } else if (raftStage === 'toKey') {
+          go(false)
+          const [lx, , lw] = keyLedge
+          // Jump straight up while passing under the ledge: he lands on it.
+          if (onRaft && x > lx + 20 && x < lx + lw / 2) { state.input.jumpQueued = state.input.jump = true; raftStage = 'up' }
+        } else if (raftStage === 'up') {
+          go(false)
+          if (onLedge) raftStage = 'onLedge'
+          else if (onRaft) raftStage = 'toKey' // missed: try again on the next pass
+        } else if (raftStage === 'onLedge') {
+          // Wait for the raft to come along under the ledge, heading right,
+          // then walk off the ledge's right end and drop straight down: by the
+          // time he lands, the raft has moved on to be under him.
+          const [lx, , lw] = keyLedge, edge = lx + lw
+          go(false)
+          if (movingRight && left >= edge - 190 && left <= edge - 140) raftStage = 'dropping'
+        } else if (raftStage === 'dropping') {
+          const [lx, , lw] = keyLedge
+          go(x < lx + lw + 22)
+          if (onRaft) raftStage = 'riding'
+        } else if (raftStage === 'riding') {
+          // Ride to the far side, then step off.
+          go(right >= gap.end - 20)
+          if (grounded && !onRaft && x > gap.end + 5) raftStage = 'off'
+        } else if (raftStage === 'off') go(true)
+        output.textContent = `RUNNING: route ${L.id} x=${Math.round(x)}, raft=${raftStage}, key=${s.hasKey}, hearts=${state.health}`
+        return
+      }
+      if (raftStage === 'off') raftStage = null // ready for the next raft pit
+
       // Enemies up on platforms are bonus ones (for the critter star): walk under them.
       const ahead = range => s.enemies.getChildren().some(e => e.active && !e.onPlatform && e.x > x && e.x - x < range)
       // Decide on the ground only: stopping mid-jump would drop Ozo into a pit.
       if (body.blocked.down) {
-        const onLedge = s.hero.y < level.floor - 5 // shots from a ledge fly over enemies, so step back down
+        const onLedge = s.hero.y < floor - 5 // shots from a ledge fly over enemies, so step back down
         const atGap = nextJump < jumps.length && x >= jumps[nextJump] - 5
-        const waitForWall = x > wall.x - 200 && x < wall.x + 40 && !s.wallBroken
+        const waitForWall = wall && x > wall.x - 200 && x < wall.x + 40 && !s.wallBroken
         // Stop and shoot enemies ahead, including any within range of where the next jump lands.
         state.input.right = !ahead(275) && !(atGap && ahead(BLASTER.range)) && !waitForWall
         state.input.left = onLedge && ahead(275)
       }
-      state.input.shoot = true
-      state.input.jump = !body.blocked.down // hold jump for full-height jumps
       // Enemy shots can't be shot down, so hop straight up over any that are about to hit
       // (unless a ledge overhead would catch the hop).
       const incoming = s.enemyShots.getChildren().some(b => b.active && Math.sign(b.body.velocity.x) === Math.sign(x - b.x) && Math.abs(b.x - x) > 50 && Math.abs(b.x - x) < 95 && b.y > s.hero.y - 70)
-      const ledgeAbove = level.ledges.some(([lx, ly, lw]) => x > lx - 20 && x < lx + lw + 20 && ly < s.hero.y - 60 && ly > s.hero.y - 140)
+      const ledgeAbove = L.ledges.some(([lx, ly, lw]) => x > lx - 20 && x < lx + lw + 20 && ly < s.hero.y - 60 && ly > s.hero.y - 140)
       if (incoming && body.blocked.down && !ledgeAbove) { state.input.right = state.input.left = false; state.input.jumpQueued = state.input.jump = true }
       // Only use a jump while actually running at the gap.
       if (state.input.right && nextJump < jumps.length && x >= jumps[nextJump] && body.blocked.down) { state.input.jumpQueued = state.input.jump = true; nextJump++ }
-      output.textContent = `RUNNING: baseline x=${Math.round(x)}, y=${Math.round(s.hero.y)}, hearts=${state.health}, wall=${s.wallHp}, jumps=${nextJump}`
+      output.textContent = `RUNNING: route ${L.id} x=${Math.round(x)}, y=${Math.round(s.hero.y)}, hearts=${state.health}, jumps=${nextJump}`
     })
-    const groundEnemies = level.enemies.filter(([, , , , y]) => y === undefined).length
-    if (!scene().wallBroken || !state.run.coins || !state.run.research || state.run.defeated < groundEnemies) throw new Error('Missing wall or enemy rewards')
+    const groundEnemies = L.enemies.filter(([, , , , y]) => y === undefined).length
+    if (wall && !s.wallBroken) throw new Error('Finished without breaking the wall')
+    if (L.door && !s.doorOpen) throw new Error('Finished without opening the door')
+    if (!state.run.coins || !state.run.research || state.run.defeated < groundEnemies) throw new Error(`Missing enemy rewards: beat ${state.run.defeated} of ${groundEnemies} ground enemies`)
     if (Object.values(state.profile.upgrades).some(Boolean)) throw new Error('Baseline used a talent')
-  })
+    lastRouteTime = state.run.seconds
+  }
+  let lastRouteTime = 0
+  for (const level of LEVELS) {
+    const goal = level.wall ? 'breakable wall' : 'raft, key and door'
+    panel.querySelector(`#verify-route-${level.id}`).onclick = () => check(`route ${level.id}: no upgrades, enemies, loot, ${goal}, victory`, async () => {
+      await playRoute(level)
+      output.dataset.seconds = lastRouteTime // how long the careful player took, for setting star times
+    })
+  }
   panel.querySelector('#verify-death').onclick = () => check('damage protection, silhouette, heart, restart', async () => {
     await fresh()
     const s = scene()

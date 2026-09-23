@@ -23,13 +23,15 @@ export const STARS = [
 export function cleanProfile(value = {}) {
   const amount = (v) => Number.isSafeInteger(v) && v >= 0 ? Math.min(v, 999999) : 0
   const levels = value.stars && typeof value.stars === 'object' ? Object.entries(value.stars) : []
+  // Best time in seconds for each level. Older saves had one number, for level 01.
+  const bests = typeof value.best === 'number' ? { '01': value.best } : value.best && typeof value.best === 'object' ? value.best : {}
   return {
     research: amount(value.research),
     coins: amount(value.coins),
     upgrades: Object.fromEntries(upgrades.map(({ id }) => [id, value.upgrades?.[id] === true])),
     equipped: value.upgrades?.twin === true && value.equipped === 'twin' ? 'twin' : 'pop',
     sound: value.sound !== false,
-    best: Number.isFinite(value.best) && value.best > 0 ? value.best : null,
+    best: Object.fromEntries(Object.entries(bests).filter(([level, seconds]) => /^\d{2}$/.test(level) && Number.isFinite(seconds) && seconds > 0)),
     stars: Object.fromEntries(levels.filter(([level]) => /^\d{2}$/.test(level))
       .map(([level, earned]) => [level, Object.fromEntries(STARS.map(({ id }) => [id, earned?.[id] === true]))])),
   }
