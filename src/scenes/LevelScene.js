@@ -845,8 +845,10 @@ export class LevelScene extends Phaser.Scene {
     if (this.hero.y > L.floor + 102) { this.hero.setY(L.floor + 82); this.die('Missed the landing'); return }
 
     for (const enemy of this.enemies.getChildren()) {
-      enemy.healthBar.setPosition(enemy.x - 24, enemy.y - 80).setVisible(now < enemy.healthBarUntil)
-      enemy.alert.setPosition(enemy.x, enemy.y - 104)
+      // Health bar and "!" just above the top of its picture, however tall it is.
+      const top = enemy.y - enemy.displayHeight * enemy.originY
+      enemy.healthBar.setPosition(enemy.x - 24, top - 14).setVisible(now < enemy.healthBarUntil)
+      enemy.alert.setPosition(enemy.x, top - 36)
       const dx = this.hero.x - enemy.x
       if (enemy.kind === 'snapper') this.updateSnapper(enemy, dx)
       else if (enemy.kind === 'mushy') this.updateMushy(enemy, dx, now)
