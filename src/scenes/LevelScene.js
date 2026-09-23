@@ -1,10 +1,10 @@
 import Phaser from 'phaser'
 import { createArt, portraitURL } from '../game/art.js'
 import { PX, SPRITES } from '../game/sprites.js'
-import { state, emit, setMode, collect, beginRun, bankRun, loseRun } from '../game/state.js'
+import { state, emit, setMode, collect, beginRun, bankRun, loseRun, awardStars } from '../game/state.js'
 import { sound } from '../game/audio.js'
 import { bodySweep, sweep, rangeEnd, canLandOnPlatform, shotRange, ENEMY_SHOT_RANGE } from '../game/combat.js'
-import { PLAYER, BLASTER, ENEMIES, WALL, LOOT, CAMERA } from '../game/tuning.js'
+import { PLAYER, BLASTER, ENEMIES, WALL, LOOT, CAMERA, FEEL } from '../game/tuning.js'
 import canopy from '../levels/canopy.js'
 
 const STONE_WIDTH = 50, STONE_HEIGHT = 44 // wall stones, world pixels
@@ -51,6 +51,8 @@ export class LevelScene extends Phaser.Scene {
     this.lastDashTrail = -1
     this.shotsFired = 0
     this.jumpsMade = 0
+    this.coinStreak = 0
+    this.lastCoinAt = -1000
     this.loadout = { ...state.profile.upgrades, equipped: state.profile.equipped }
     state.health = PLAYER.hearts
     beginRun(L.enemies.length, Boolean(data.autostart))
@@ -76,11 +78,12 @@ export class LevelScene extends Phaser.Scene {
     this.glider = this.add.image(0, 0, 'glider').setScale(PX).setDepth(19).setVisible(false)
 
     this.enemies = this.physics.add.group()
-    for (const [x, type, min, max] of L.enemies) if (after(x)) this.createEnemy(x, type, min, max)
+    for (const [x, type, min, max, y] of L.enemies) if (after(x)) this.createEnemy(x, type, min, max, y)
     this.shots = this.physics.add.group({ allowGravity: false, maxSize: 50 })
     this.enemyShots = this.physics.add.group({ allowGravity: false, maxSize: 24 })
     this.loot = this.physics.add.group({ allowGravity: false })
     for (const [x, y, kind] of L.pickups) if (after(x)) this.createLoot(x, y, kind)
+    for (const [x, y, w, h] of L.clouds ?? []) this.cloud(x, y, w, h, 26) // in front of loot: secret stashes
 
     this.physics.add.collider(this.hero, this.platforms, undefined, (hero, platform) => canLandOnPlatform(hero.body, platform))
     this.physics.add.collider(this.hero, this.wallCollider)
@@ -112,7 +115,7 @@ export class LevelScene extends Phaser.Scene {
     }
     setMode(data.autostart ? 'playing' : 'title')
     if (data.autostart) this.physics.resume()
-    emit('level', { id: L.id, name: L.name })
+    emit('level', { id: L.id, name: L.name, starTime: L.starTime })
     emit('ready', portraitURL())
     emit('health', state.health)
     emit('progress', saved ? (L.checkpoint - L.start) / (L.exit - L.start) : 0)
@@ -219,9 +222,16 @@ export class LevelScene extends Phaser.Scene {
   // A tutorial tip on a pixel cloud sized to fit the words.
   tip(x, y, text) {
     const label = this.add.text(x, y, text, { ...FONT, fontSize: '22px', color: '#10202c' }).setOrigin(0.5).setDepth(6)
+    this.cloud(x, y, label.width + 56, label.height + 28, 5)
+    return label
+  }
+
+  // A pixel cloud centred on (x, y). Tip clouds sit behind their words; stash
+  // clouds sit in front of the loot hidden inside them.
+  cloud(x, y, width, height, depth) {
     const snap = v => Math.round(v / PX) * PX
-    const w = snap(label.width + 56), h = snap(label.height + 28), left = snap(x - w / 2), top = snap(y - h / 2)
-    const g = this.add.graphics().setDepth(5)
+    const w = snap(width), h = snap(height), left = snap(x - w / 2), top = snap(y - h / 2)
+    const g = this.add.graphics().setDepth(depth)
     // A box with its corners stepped off, so it looks drawn in pixels.
     const puff = (bx, by, bw, bh, color) => g.fillStyle(color).fillRect(bx + PX, by, bw - 2 * PX, bh).fillRect(bx, by + PX, bw, bh - 2 * PX)
     // Every cloud is puffy on top; most also bulge underneath, with none, one
@@ -235,7 +245,6 @@ export class LevelScene extends Phaser.Scene {
     puff(left + snap(w * 0.48), top - 7 * PX, snap(w * 0.3), 10 * PX, 0xffffff)
     for (const [bx, by, bw, bh] of below) puff(bx, by, bw, bh, 0xffffff)
     puff(left, top, w, h, 0xffffff)
-    return label
   }
 
   createWall(broken = false) {
@@ -307,13 +316,14 @@ export class LevelScene extends Phaser.Scene {
     this.add.text(x, floor - 24 * PX - 24, 'HOME', { ...FONT, fontSize: '20px', color: '#10202c' }).setOrigin(0.5).setDepth(11)
   }
 
-  createEnemy(x, type, min, max) {
-    const enemy = this.physics.add.sprite(x, this.level.floor, type).setOrigin(0.5, 1).setScale(PX).setDepth(18)
+  // `y` is the top of the platform it stands on; the ground if left out.
+  createEnemy(x, type, min, max, y = this.level.floor) {
+    const enemy = this.physics.add.sprite(x, y, type).setOrigin(0.5, 1).setScale(PX).setDepth(18)
     this.enemies.add(enemy)
     feetBody(enemy, 53, 63)
     const health = ENEMIES[type].health
-    Object.assign(enemy, { kind: type, hp: health, maxHp: health, patrolMin: min, patrolMax: max, direction: -1, fireAt: this.playTime + 1300 + x % 700, warning: false, stunnedUntil: 0 })
-    enemy.healthBar = this.add.graphics().setDepth(25)
+    Object.assign(enemy, { kind: type, hp: health, maxHp: health, patrolMin: min, patrolMax: max, direction: -1, fireAt: this.playTime + 1300 + x % 700, warning: false, stunnedUntil: 0, onPlatform: y !== this.level.floor, healthBarUntil: 0 })
+    enemy.healthBar = this.add.graphics().setDepth(25).setVisible(false) // only shown for a moment after each hit
     enemy.alert = this.add.image(x, 0, 'alert').setScale(PX).setDepth(25).setVisible(false)
     this.drawEnemyHealth(enemy)
     return enemy
@@ -338,7 +348,12 @@ export class LevelScene extends Phaser.Scene {
       this.burst(loot.x, loot.y, 10, 0xff5a7a)
     } else {
       collect(loot.kind)
-      sound(loot.kind === 'coins' ? 'coin' : 'research')
+      if (loot.kind === 'coins') {
+        // Coins grabbed one after another ring higher and higher.
+        this.coinStreak = this.playTime - this.lastCoinAt < LOOT.coinStreakTime ? Math.min(this.coinStreak + 1, LOOT.coinStreakMax) : 0
+        this.lastCoinAt = this.playTime
+        sound('coin', this.coinStreak)
+      } else sound('research')
       this.burst(loot.x, loot.y, 4, loot.kind === 'coins' ? 0xffd23f : 0x7ef2df)
     }
     loot.destroy()
@@ -369,6 +384,9 @@ export class LevelScene extends Phaser.Scene {
       bullet.damage = this.loadout.power ? BLASTER.popPowerDamage : BLASTER.damage
       sound('shoot')
       this.burst(bullet.x, bullet.y, 2, 0xdffff0, 0.4)
+      // Muzzle flash: a bright blink at the end of the blaster.
+      const flash = this.add.image(bullet.x, bullet.y, 'flash').setScale(PX).setDepth(23)
+      this.tweens.add({ targets: flash, scale: PX * 1.6, alpha: 0, duration: 90, ease: 'Quad.easeOut', onComplete: () => flash.destroy() })
     }
     fire()
     if (this.loadout.equipped === 'twin') this.time.delayedCall(BLASTER.twinGap, fire)
@@ -440,6 +458,7 @@ export class LevelScene extends Phaser.Scene {
     enemy.hp -= bullet.damage
     this.popBullet(bullet)
     this.drawEnemyHealth(enemy)
+    enemy.healthBarUntil = this.playTime + FEEL.healthBarTime
     if (enemy.hp > 0) {
       // Snappers get knocked back a little, away from the shot.
       const t = ENEMIES.snapper
@@ -449,17 +468,30 @@ export class LevelScene extends Phaser.Scene {
       this.time.delayedCall(90, () => { if (enemy.active) enemy.clearTint() })
       return
     }
-    const { x, y } = enemy
+    // Pop: a stand-in squashes down, then puffs up white and vanishes in a
+    // burst, and the drops appear where the enemy stood.
+    const { x, y, kind } = enemy
+    const ghost = this.add.image(x, y, enemy.texture.key).setOrigin(0.5, 1).setScale(PX).setFlipX(enemy.flipX).setDepth(18)
     enemy.healthBar.destroy()
     enemy.alert.destroy()
     enemy.destroy()
     state.run.defeated++
-    this.burst(x, y - 25, 12, 0xffffff)
-    this.burst(x, y - 35, 7, enemy.kind === 'spitter' ? 0xb07cd8 : 0x4fc47e)
-    sound('poof')
-    // Drops appear in a row where the enemy stood, research just above.
-    for (let i = 0; i < LOOT.coinsPerEnemy; i++) this.createLoot(x + (i - (LOOT.coinsPerEnemy - 1) / 2) * 32, y - 14, 'coins')
-    for (let i = 0; i < LOOT.researchPerEnemy; i++) this.createLoot(x + (i - (LOOT.researchPerEnemy - 1) / 2) * 32, y - 48, 'research')
+    sound('pop')
+    this.tweens.chain({
+      targets: ghost,
+      tweens: [
+        { scaleX: PX * 1.3, scaleY: PX * 0.65, duration: 70, ease: 'Quad.easeOut' },
+        { scaleX: PX * 1.5, scaleY: PX * 1.5, alpha: 0, duration: 150, ease: 'Quad.easeIn', onStart: () => ghost.setTint(0xffffff).setTintMode(Phaser.TintModes.FILL) },
+      ],
+      onComplete: () => ghost.destroy(),
+    })
+    this.time.delayedCall(70, () => {
+      this.burst(x, y - 25, 12, 0xffffff)
+      this.burst(x, y - 35, 7, kind === 'spitter' ? 0xb07cd8 : 0x4fc47e)
+      // Drops appear in a row where the enemy stood, research just above.
+      for (let i = 0; i < LOOT.coinsPerEnemy; i++) this.createLoot(x + (i - (LOOT.coinsPerEnemy - 1) / 2) * 32, y - 14, 'coins')
+      for (let i = 0; i < LOOT.researchPerEnemy; i++) this.createLoot(x + (i - (LOOT.researchPerEnemy - 1) / 2) * 32, y - 48, 'research')
+    })
   }
 
   hurt(fromX) {
@@ -515,6 +547,8 @@ export class LevelScene extends Phaser.Scene {
     state.run.seconds = Math.round(this.playTime / 1000)
     if (!state.profile.best || state.run.seconds < state.profile.best) state.profile.best = state.run.seconds
     bankRun() // adds this run's loot to the saved totals
+    const earned = { home: true, critters: state.run.defeated >= state.run.enemies, quick: state.run.seconds < this.level.starTime }
+    state.run.stars = { earned, fresh: awardStars(this.level.id, earned) }
     setMode('winning')
     this.enterHouse()
   }
@@ -608,7 +642,7 @@ export class LevelScene extends Phaser.Scene {
     if (this.hero.y > L.floor + 102) { this.hero.setY(L.floor + 82); this.die('Missed the landing'); return }
 
     for (const enemy of this.enemies.getChildren()) {
-      enemy.healthBar.setPosition(enemy.x - 24, enemy.y - 80)
+      enemy.healthBar.setPosition(enemy.x - 24, enemy.y - 80).setVisible(now < enemy.healthBarUntil)
       enemy.alert.setPosition(enemy.x, enemy.y - 104)
       const dx = this.hero.x - enemy.x
       if (enemy.kind === 'snapper') this.updateSnapper(enemy, dx)

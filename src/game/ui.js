@@ -1,5 +1,5 @@
-import { events, state, upgrades, purchase, saveProfile, setMode, resetInput, wallet, resetProfile } from './state.js'
-import { sound, unlockAudio } from './audio.js'
+import { events, state, upgrades, purchase, saveProfile, setMode, resetInput, wallet, resetProfile, STARS, starCount } from './state.js'
+import { sound, unlockAudio, suspendAudio, setMusicMood } from './audio.js'
 import { PLAYER } from './tuning.js'
 
 const paths = {
@@ -138,7 +138,7 @@ export function setupUI(getScene) {
   events.addEventListener('release-input', () => { keyboard.clear(); pointers.clear(); resetStick(); syncInput() })
   const pauseWhenAway = () => { resetInput(); if (state.mode === 'playing') getScene().pauseRun() }
   window.addEventListener('blur', pauseWhenAway)
-  document.addEventListener('visibilitychange', () => { if (document.hidden) pauseWhenAway() })
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { pauseWhenAway(); suspendAudio() } })
   // Turning a phone or tablet upright covers the game with a "turn sideways" hint, so pause.
   const upright = window.matchMedia('(orientation: portrait) and (pointer: coarse)')
   upright.addEventListener('change', () => { if (upright.matches) pauseWhenAway() })
@@ -172,7 +172,7 @@ export function setupUI(getScene) {
         <h1 class="logo">GUN SHOT</h1>
         <p class="tagline">Ozo's first adventure</p>
         <nav class="menu-buttons" aria-label="Main menu">
-          <button class="primary" data-action="start">PLAY <small>${level.id} ${level.name}</small></button>
+          <button class="primary" data-action="start">PLAY <small>${level.id} ${level.name} <span class="menu-stars" aria-label="${starCount(level.id)} of 3 stars">${'★'.repeat(starCount(level.id))}${'☆'.repeat(3 - starCount(level.id))}</span></small></button>
           <button data-action="shop">NEST <small>upgrades</small></button>
           <button data-action="help">HOW TO PLAY</button>
         </nav>
@@ -199,14 +199,34 @@ export function setupUI(getScene) {
       <div class="actions"><button class="primary" data-action="back">GOT IT</button></div>
     </div>`
   }
+  // The level's three stars after a finished run: gold once earned (on any
+  // run), with this run's numbers underneath and NEW! on the ones just won.
+  function starRow() {
+    const { fresh = [] } = state.run.stars ?? {}
+    const saved = state.profile.stars[level.id] ?? {}
+    const detail = {
+      home: 'Reach home',
+      critters: `Every critter ${state.run.defeated}/${state.run.enemies}`,
+      quick: `Under ${timeLabel(level.starTime)} (${timeLabel(state.run.seconds)})`,
+    }
+    if (fresh.length && !state.run.stars.cheered) {
+      state.run.stars.cheered = true // only once, even if the card is shown again
+      fresh.forEach((_, i) => setTimeout(() => sound('star'), 450 + i * 280))
+    }
+    return `<ul class="stars">${STARS.map(({ id, label }, i) => {
+      const got = saved[id], isNew = fresh.includes(id)
+      return `<li class="${got ? 'got' : ''}${isNew ? ' new' : ''}" style="--i:${i}" aria-label="${label}: ${got ? 'earned' : 'not yet'}">
+        <span class="star" aria-hidden="true">★</span><small>${detail[id]}</small>${isNew ? '<b>NEW!</b>' : ''}</li>`
+    }).join('')}</ul>`
+  }
   function renderCard(mode) {
     const dead = mode === 'dead', complete = mode === 'complete', paused = mode === 'paused'
     const title = complete ? 'Level complete!' : dead ? deathReason || 'Out of hearts' : 'Paused'
     const checkpoint = dead && state.checkpoint
     const text = complete ? 'Ozo made it home. Your loot is saved.' : checkpoint ? 'Start again from the flag. Loot picked up after it is lost.' : dead ? 'Back to the start. Loot from this try is lost; upgrades are kept.' : 'Loot only counts once you reach home.'
-    const stats = complete ? `<p class="stats">Critters ${state.run.defeated}/${state.run.enemies} · Time ${timeLabel(state.run.seconds)} · +${state.run.research} ${currency('research')} · +${state.run.coins} ${currency('coins')}</p>` : ''
+    const stats = complete ? `<p class="stats">Time ${timeLabel(state.run.seconds)} · +${state.run.research} ${currency('research')} · +${state.run.coins} ${currency('coins')}</p>` : ''
     overlay.innerHTML = `<div class="panel" role="dialog" aria-modal="true" aria-labelledby="result-title">
-      <h2 id="result-title">${title}</h2>${text ? `<p>${text}</p>` : ''}${stats}
+      <h2 id="result-title">${title}</h2>${complete ? starRow() : ''}${text ? `<p>${text}</p>` : ''}${stats}
       <div class="actions">${checkpoint
         ? '<button class="primary" data-action="checkpoint">FROM THE FLAG</button><button data-action="start">RESTART LEVEL</button>'
         : `<button class="primary" data-action="${paused ? 'resume' : 'start'}">${paused ? 'RESUME' : complete ? 'PLAY AGAIN' : 'TRY AGAIN'}</button>`}
@@ -226,6 +246,7 @@ export function setupUI(getScene) {
   }
   function renderMode() {
     const mode = state.mode; stage.dataset.mode = mode
+    setMusicMood(['paused', 'dying', 'dead'].includes(mode) ? 'quiet' : 'full')
     const inLevel = ['playing', 'paused', 'dying', 'winning', 'dead', 'complete'].includes(mode)
     hud.hidden = !inLevel; progress.hidden = !inLevel; controls.hidden = mode !== 'playing'
     overlay.hidden = ['playing', 'dying', 'winning'].includes(mode)

@@ -77,14 +77,20 @@ export const ENEMIES = {
   },
 }
 
+export const FEEL = {
+  healthBarTime: 2000, // an enemy's health bar shows for this long (ms) after each hit
+}
+
 export const WALL = {
   health: 12,
   healthPerRow: 4, // a row of stones falls off every 4 damage
 }
 
 export const LOOT = {
-  coinsPerEnemy: 3,
+  coinsPerEnemy: 1,
   researchPerEnemy: 1,
+  coinStreakTime: 700, // coins picked up within this many ms of each other ring higher and higher...
+  coinStreakMax: 8, // ...for up to this many steps
   magnetRadius: 60, // coins and research drift to Ozo inside this distance
   magnetSpeed: 400,
 }

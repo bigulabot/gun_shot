@@ -133,6 +133,23 @@ svg { width: 1.4em; height: 1.4em; flex-shrink: 0; }
 .panel button { border: 3px solid var(--paper); background: transparent; padding: 0.4em 1em; }
 .panel button.primary, .panel button.selected { background: var(--accent); border-color: var(--accent); color: var(--ink); }
 .hint, .stats { color: var(--muted); font-size: 0.85em; }
+
+/* Stars on the "Level complete" card pop in one by one; new ones spin in. */
+.stars { list-style: none; margin: 0.2em 0 0; padding: 0; display: flex; justify-content: center; gap: 1em; }
+.stars li { position: relative; display: grid; justify-items: center; gap: 0.2em; min-width: 7.5em; }
+.stars .star { font-size: 3em; line-height: 1; color: #3a4b58; animation: star-in 0.35s calc(0.3s + var(--i) * 0.28s) both; }
+.stars .got .star { color: var(--accent); text-shadow: 0 0.06em 0 #d9932a; }
+.stars .new .star { animation-name: star-new; animation-duration: 0.5s; }
+.stars small { font-size: 0.75em; color: var(--muted); }
+.stars .got small { color: var(--paper); }
+.stars b {
+  position: absolute; top: -0.3em; right: 0; padding: 0 0.3em; font-size: 0.7em;
+  color: var(--ink); background: #ff7fb8; transform: rotate(8deg);
+  animation: star-in 0.3s calc(0.6s + var(--i) * 0.28s) both;
+}
+@keyframes star-in { from { transform: scale(0); opacity: 0; } }
+@keyframes star-new { 0% { transform: scale(0) rotate(-45deg); opacity: 0; } 65% { transform: scale(1.4) rotate(10deg); opacity: 1; } }
+.menu-stars { margin-left: 0.4em; letter-spacing: 0.1em; }
 .hint button.armed { background: #ff5a5a; color: #fff; border-color: #ff5a5a; }
 
 .shop { text-align: left; }

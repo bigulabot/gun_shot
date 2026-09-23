@@ -57,7 +57,8 @@ export function setupVerification(game) {
       const s = scene(), x = s.hero.x, body = s.hero.body
       if (state.mode === 'dead' || state.mode === 'dying') throw new Error(`Died at x=${Math.round(x)}, health=${state.health}, next jump=${jumps[nextJump]}`)
       if (state.mode !== 'playing') return
-      const ahead = range => s.enemies.getChildren().some(e => e.active && e.x > x && e.x - x < range)
+      // Enemies up on platforms are bonus ones (for the critter star): walk under them.
+      const ahead = range => s.enemies.getChildren().some(e => e.active && !e.onPlatform && e.x > x && e.x - x < range)
       // Decide on the ground only: stopping mid-jump would drop Ozo into a pit.
       if (body.blocked.down) {
         const onLedge = s.hero.y < level.floor - 5 // shots from a ledge fly over enemies, so step back down
@@ -78,7 +79,8 @@ export function setupVerification(game) {
       if (state.input.right && nextJump < jumps.length && x >= jumps[nextJump] && body.blocked.down) { state.input.jumpQueued = state.input.jump = true; nextJump++ }
       output.textContent = `RUNNING: baseline x=${Math.round(x)}, y=${Math.round(s.hero.y)}, hearts=${state.health}, wall=${s.wallHp}, jumps=${nextJump}`
     })
-    if (!scene().wallBroken || !state.run.coins || !state.run.research || state.run.defeated !== level.enemies.length) throw new Error('Missing wall or enemy rewards')
+    const groundEnemies = level.enemies.filter(([, , , , y]) => y === undefined).length
+    if (!scene().wallBroken || !state.run.coins || !state.run.research || state.run.defeated < groundEnemies) throw new Error('Missing wall or enemy rewards')
     if (Object.values(state.profile.upgrades).some(Boolean)) throw new Error('Baseline used a talent')
   })
   panel.querySelector('#verify-death').onclick = () => check('damage protection, silhouette, heart, restart', async () => {

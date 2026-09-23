@@ -12,8 +12,17 @@ export const upgrades = [
   { id: 'twin', name: 'Twin Pop', icon: '••', description: 'A new blaster. Fire two pops in a quick burst.', currency: 'coins', cost: 16 },
 ]
 
+// Three stars per level, each earned on its own and kept once earned:
+// reach home, beat every critter, finish under the level's star time.
+export const STARS = [
+  { id: 'home', label: 'Reach home' },
+  { id: 'critters', label: 'Beat every critter' },
+  { id: 'quick', label: 'Be quick' },
+]
+
 export function cleanProfile(value = {}) {
   const amount = (v) => Number.isSafeInteger(v) && v >= 0 ? Math.min(v, 999999) : 0
+  const levels = value.stars && typeof value.stars === 'object' ? Object.entries(value.stars) : []
   return {
     research: amount(value.research),
     coins: amount(value.coins),
@@ -21,8 +30,21 @@ export function cleanProfile(value = {}) {
     equipped: value.upgrades?.twin === true && value.equipped === 'twin' ? 'twin' : 'pop',
     sound: value.sound !== false,
     best: Number.isFinite(value.best) && value.best > 0 ? value.best : null,
+    stars: Object.fromEntries(levels.filter(([level]) => /^\d{2}$/.test(level))
+      .map(([level, earned]) => [level, Object.fromEntries(STARS.map(({ id }) => [id, earned?.[id] === true]))])),
   }
 }
+
+// Adds a finished run's stars to the level's saved ones. Returns which were new.
+export function awardStars(level, earned) {
+  const saved = state.profile.stars[level] ??= Object.fromEntries(STARS.map(({ id }) => [id, false]))
+  const fresh = STARS.filter(({ id }) => earned[id] && !saved[id]).map(({ id }) => id)
+  for (const id of fresh) saved[id] = true
+  saveProfile()
+  return fresh
+}
+
+export const starCount = level => STARS.filter(({ id }) => state.profile.stars[level]?.[id]).length
 
 function loadProfile() {
   try { return cleanProfile(JSON.parse(localStorage.getItem(SAVE_KEY)) || {}) }

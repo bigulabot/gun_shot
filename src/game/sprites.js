@@ -181,6 +181,14 @@ export const SPRITES = {
     'mmWWWm',
     '.mmmm.',
   ],
+  // A quick bright flash at the end of the blaster when Ozo shoots.
+  flash: [
+    '..u..',
+    '.uWu.',
+    'uWWWu',
+    '.uWu.',
+    '..u..',
+  ],
   'enemy-pop': [
     '.sss.',
     'sSSss',

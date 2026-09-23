@@ -100,6 +100,21 @@ test('loot only counts once the level is finished', async () => {
   assert.equal(JSON.parse(api.saved()).coins, 6)
 })
 
+test('stars are earned one at a time, kept, and survive a new session', async () => {
+  const first = await session()
+  assert.equal(first.starCount('01'), 0)
+  assert.deepEqual(first.awardStars('01', { home: true, critters: false, quick: true }), ['home', 'quick'])
+  assert.deepEqual(first.awardStars('01', { home: true, critters: true, quick: false }), ['critters'], 'only new stars are reported')
+  assert.equal(first.starCount('01'), 3, 'a slower run does not take the quick star away')
+  const second = await session(first.saved())
+  assert.equal(second.starCount('01'), 3)
+  assert.equal(second.starCount('02'), 0)
+  const broken = await session(JSON.stringify({ stars: { '01': { home: 'yes', quick: true }, nonsense: { home: true } } }))
+  assert.deepEqual(broken.state.profile.stars, { '01': { home: false, critters: false, quick: true } })
+  broken.resetProfile()
+  assert.equal(broken.starCount('01'), 0, 'reset clears stars')
+})
+
 test('reset save returns everything to a fresh start but keeps the sound setting', async () => {
   const api = await session(JSON.stringify({ coins: 40, research: 20, upgrades: { twin: true, jump: true }, equipped: 'twin', sound: false, best: 42 }))
   api.resetProfile()
