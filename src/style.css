@@ -95,9 +95,40 @@ svg { width: 1.4em; height: 1.4em; flex-shrink: 0; }
 /* Menus */
 .overlay { position: absolute; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; background: #10202cb0; padding: 2cqw; }
 .panel { background: var(--ink); border: 3px solid var(--paper); padding: 1.5em 2em; max-width: min(640px, 100%); max-height: 100%; overflow-y: auto; text-align: center; display: grid; gap: 0.8em; }
-.panel h1 { font-size: 3em; color: var(--accent); letter-spacing: 0.1em; }
 .panel h2 { font-size: 1.6em; color: var(--accent); }
-.portrait { width: 8em; justify-self: center; image-rendering: pixelated; }
+
+/* Main menu: the level drifts by behind; darker on the left so the words stand out. */
+[data-mode="title"] .overlay { padding: 0; background: linear-gradient(90deg, #10202ce6 0%, #10202cb0 36%, #10202c00 62%); }
+.menu { position: relative; width: 100%; height: 100%; }
+.menu-main { position: absolute; left: 6cqw; top: 50%; transform: translateY(-50%); width: 34cqw; display: grid; gap: 1.2cqw; }
+.logo {
+  font-size: 7.2cqw; line-height: 1; color: var(--accent); letter-spacing: 0.04em;
+  text-shadow: 0.05em 0.05em 0 #ff8a33, 0.1em 0.1em 0 var(--ink);
+}
+.tagline { font-size: max(12px, 1.7cqw); margin-top: -0.4cqw; }
+.menu-buttons { display: grid; gap: 1cqw; margin-top: 1.2cqw; }
+.menu-buttons button {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 1em;
+  min-height: 48px; padding: 0.9cqw 1.6cqw; font-size: max(15px, 2cqw); text-align: left;
+  border: 3px solid var(--paper); background: #10202ccc;
+}
+.menu-buttons button.primary { font-size: max(20px, 2.8cqw); background: var(--accent); border-color: var(--accent); color: var(--ink); }
+.menu-buttons small { font-size: 0.55em; opacity: 0.75; }
+.menu-stats { font-size: max(12px, 1.4cqw); }
+/* Big Ozo stands on the level's grass (20% up the screen) and bobs gently. */
+.menu-hero {
+  position: absolute; right: 13cqw; bottom: 10.3cqw; width: 22cqw;
+  image-rendering: pixelated; animation: bob 1.8s ease-in-out infinite;
+}
+@keyframes bob { 50% { transform: translateY(-0.7cqw); } }
+
+.help { text-align: left; max-width: min(760px, 100%); }
+.help h2 { text-align: center; }
+.help-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5em; }
+.help-list li { display: grid; grid-template-columns: 5em 1fr auto; gap: 1em; align-items: baseline; border-bottom: 1px solid #ffffff22; padding-bottom: 0.4em; }
+.help-list b { color: var(--accent); }
+.help-list kbd { font: inherit; font-size: 0.8em; color: var(--muted); border: 1px solid var(--muted); padding: 0 0.4em; }
+.help .actions { margin-top: 0.4em; }
 .actions { display: flex; gap: 0.6em; justify-content: center; flex-wrap: wrap; }
 .panel button { border: 3px solid var(--paper); background: transparent; padding: 0.4em 1em; }
 .panel button.primary, .panel button.selected { background: var(--accent); border-color: var(--accent); color: var(--ink); }

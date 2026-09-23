@@ -39,6 +39,11 @@ export const PLAYER = {
 export const CAMERA = {
   lookAhead: 120, // how far the camera looks ahead of Ozo, in the direction he faces
   turnTime: 550, // how quickly it swings round when he turns (higher = slower)
+  // Behind the main menu the level drifts between these camera positions and
+  // back. Chosen so the menu's big Ozo always has ground under him, not a pit.
+  menuPanFrom: 1100,
+  menuPanTo: 2100,
+  menuPanTime: 40000, // ms each way
 }
 
 export const BLASTER = {

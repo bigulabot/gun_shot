@@ -64,7 +64,7 @@ export class LevelScene extends Phaser.Scene {
     for (const [x, width] of L.ground) this.addPlatform(x, L.floor, width, GROUND_DEPTH)
     this.drawPits()
     for (const [x, y, width, height = 25] of L.ledges) this.addPlatform(x, y, width, height, true)
-    for (const [x, y, text, touchText] of L.tips) this.tip(x, y, TOUCH && touchText ? touchText : text)
+    this.tipLabels = L.tips.map(([x, y, text, touchText]) => this.tip(x, y, TOUCH && touchText ? touchText : text))
     this.createWall(Boolean(saved))
     this.createCheckpoint(Boolean(saved))
     this.createExit()
@@ -100,6 +100,16 @@ export class LevelScene extends Phaser.Scene {
     // A red flash over the screen when Ozo gets hurt.
     this.hurtFlash = this.add.rectangle(0, 0, 1280, 720, 0xff3355).setOrigin(0).setScrollFactor(0).setDepth(50).setAlpha(0)
     this.physics.pause()
+    // Main menu: the level drifts slowly by behind it, without Ozo (the menu
+    // has its own big one) or the words on the tip clouds.
+    if (!data.autostart) {
+      this.hero.setVisible(false)
+      for (const label of this.tipLabels) label.setVisible(false)
+      const camera = this.cameras.main
+      camera.stopFollow()
+      camera.scrollX = CAMERA.menuPanFrom
+      this.tweens.add({ targets: camera, scrollX: CAMERA.menuPanTo, duration: CAMERA.menuPanTime, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' })
+    }
     setMode(data.autostart ? 'playing' : 'title')
     if (data.autostart) this.physics.resume()
     emit('level', { id: L.id, name: L.name })
@@ -225,6 +235,7 @@ export class LevelScene extends Phaser.Scene {
     puff(left + snap(w * 0.48), top - 7 * PX, snap(w * 0.3), 10 * PX, 0xffffff)
     for (const [bx, by, bw, bh] of below) puff(bx, by, bw, bh, 0xffffff)
     puff(left, top, w, h, 0xffffff)
+    return label
   }
 
   createWall(broken = false) {

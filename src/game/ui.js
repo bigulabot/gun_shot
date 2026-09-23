@@ -20,7 +20,7 @@ export function setupUI(getScene) {
   const stage = document.querySelector('#stage'), overlay = document.querySelector('#overlay')
   const controls = document.querySelector('#controls'), hud = document.querySelector('#hud')
   const progress = document.querySelector('#level-progress'), toast = document.querySelector('#toast')
-  let portrait = '', level = { id: '', name: '' }, deathReason = '', shopReturn = 'title', toastTimer, resetArmed = 0
+  let portrait = '', level = { id: '', name: '' }, deathReason = '', shopReturn = 'title', toastTimer, resetArmed = 0, titleView = 'main'
   const keyboard = new Set(), pointers = new Map()
   const buttons = [...document.querySelectorAll('[data-control]')]
   const bindings = { ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', Space: 'jump', ArrowUp: 'jump', KeyW: 'jump', KeyX: 'shoot', KeyJ: 'shoot', ShiftLeft: 'dash', ShiftRight: 'dash' }
@@ -122,6 +122,7 @@ export function setupUI(getScene) {
       if (state.mode === 'playing') getScene().pauseRun()
       else if (state.mode === 'paused') getScene().resumeRun()
       else if (state.mode === 'shop') setMode(shopReturn)
+      else if (state.mode === 'title' && titleView === 'help') showTitle('main')
       return
     }
     if (!bindings[event.code] || state.mode !== 'playing') return
@@ -160,13 +161,42 @@ export function setupUI(getScene) {
   document.addEventListener('fullscreenchange', () => fullscreen.setAttribute('aria-label', document.fullscreenElement ? 'Exit fullscreen' : 'Enter fullscreen'))
 
   const currency = id => id === 'research' ? '<span class="research">◆</span>' : '<span class="coins">●</span>'
+  // Main menu: title and big buttons on the left, Ozo on the right, the level
+  // drifting by behind (LevelScene). "How to play" swaps in a help page.
   function renderTitle() {
-    overlay.innerHTML = `<div class="panel title">
-      ${portrait ? `<img class="portrait" src="${portrait}" alt="Ozo the toucan"/>` : ''}
-      <h1>GUN SHOT</h1>
-      <p>Ozo's first adventure · ${level.id} ${level.name}</p>
-      <div class="actions"><button class="primary" data-action="start">PLAY</button><button data-action="shop">NEST</button></div>
-      <p class="hint">← → move · SPACE jump · X shoot · SHIFT dash · ESC pause</p>
+    if (titleView === 'help') return renderHelp()
+    const { research, coins, best } = state.profile
+    const stats = [research || coins ? `${currency('research')} ${research} &nbsp; ${currency('coins')} ${coins}` : '', best ? `Best time ${timeLabel(best)}` : ''].filter(Boolean).join(' &nbsp;·&nbsp; ')
+    overlay.innerHTML = `<div class="menu">
+      <div class="menu-main">
+        <h1 class="logo">GUN SHOT</h1>
+        <p class="tagline">Ozo's first adventure</p>
+        <nav class="menu-buttons" aria-label="Main menu">
+          <button class="primary" data-action="start">PLAY <small>${level.id} ${level.name}</small></button>
+          <button data-action="shop">NEST <small>upgrades</small></button>
+          <button data-action="help">HOW TO PLAY</button>
+        </nav>
+        ${stats ? `<p class="menu-stats">${stats}</p>` : ''}
+      </div>
+      ${portrait ? `<img class="menu-hero" src="${portrait}" alt="Ozo the toucan"/>` : ''}
+    </div>`
+  }
+  function showTitle(view) {
+    titleView = view; renderTitle()
+    overlay.querySelector('.primary')?.focus({ preventScroll: true })
+  }
+  function renderHelp() {
+    const row = (what, touch, keys) => `<li><b>${what}</b><span>${touch}</span><kbd>${keys}</kbd></li>`
+    overlay.innerHTML = `<div class="panel help" role="dialog" aria-modal="true" aria-labelledby="help-title">
+      <h2 id="help-title">How to play</h2>
+      <ul class="help-list">
+        ${row('Move', 'Put your left thumb down anywhere and slide it', '← →')}
+        ${row('Jump', 'Tap JUMP for a hop, hold it to go higher', 'Space')}
+        ${row('Shoot', 'Hold FIRE to keep shooting', 'X')}
+        ${row('Pause', 'Tap the pause button at the top', 'Esc')}
+      </ul>
+      <p>Break the crumbling wall and get Ozo home. Coins and research only count once you reach home, then spend them in the Nest.</p>
+      <div class="actions"><button class="primary" data-action="back">GOT IT</button></div>
     </div>`
   }
   function renderCard(mode) {
@@ -199,7 +229,7 @@ export function setupUI(getScene) {
     const inLevel = ['playing', 'paused', 'dying', 'winning', 'dead', 'complete'].includes(mode)
     hud.hidden = !inLevel; progress.hidden = !inLevel; controls.hidden = mode !== 'playing'
     overlay.hidden = ['playing', 'dying', 'winning'].includes(mode)
-    if (mode === 'title') renderTitle()
+    if (mode === 'title') { titleView = 'main'; renderTitle() }
     else if (mode === 'shop') renderShop()
     else if (['paused', 'dead', 'complete'].includes(mode)) renderCard(mode)
     if (mode === 'playing') { document.activeElement?.blur(); document.querySelector('[data-control="dash"]').hidden = !state.profile.upgrades.dash }
@@ -217,6 +247,8 @@ export function setupUI(getScene) {
     if (action === 'home') getScene().goHome()
     if (action === 'shop') { shopReturn = state.mode; setMode('shop') }
     if (action === 'close-shop') setMode(shopReturn)
+    if (action === 'help') showTitle('help')
+    if (action === 'back') showTitle('main')
     if (action === 'reset-save') {
       // Two taps, so it can't happen by accident.
       if (resetArmed > Date.now()) { resetArmed = 0; resetProfile(); showToast('Save reset to a fresh start.') }
